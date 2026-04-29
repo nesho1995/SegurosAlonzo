@@ -1,0 +1,75 @@
+@model IEnumerable<ReclamosWhatsApp.Models.Cliente>
+
+@{
+    ViewData["Title"] = "Clientes";
+}
+
+<section class="page-header">
+    <div>
+        <h2>Cartera de clientes</h2>
+        <p class="text-muted">Clientes, teléfonos, pólizas y seguimiento comercial.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/Cartera/Crear" class="btn btn-primary">Nuevo cliente</a>
+        <a href="/Cartera/Importar" class="btn btn-outline-primary">Importar Excel</a>
+    </div>
+</section>
+
+@if (TempData["Mensaje"] != null)
+{
+    <div class="alert alert-success">@TempData["Mensaje"]</div>
+}
+
+<section class="card">
+    <div class="card-header section-header">
+        <div>
+            <h3>Clientes registrados</h3>
+            <p class="text-muted mb-0">@Model.Count() contactos en cartera.</p>
+        </div>
+    </div>
+    <div class="card-body table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Cliente</th>
+                    <th>Teléfono</th>
+                    <th>Contacto</th>
+                    <th>Email</th>
+                    <th>Cumpleaños</th>
+                    <th>Ciudad</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td><strong>@item.Nombre</strong></td>
+                    <td>@item.Telefono</td>
+                    <td>@item.Contacto</td>
+                    <td>@item.Email</td>
+                    <td>@item.FechaNacimiento?.ToString("dd/MM/yyyy")</td>
+                    <td>@item.Ciudad</td>
+                    <td>
+                        @if (item.Activo)
+                        {
+                            <span class="badge bg-success">Activo</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Inactivo</span>
+                        }
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a href="/Cartera/Detalle/@item.Id" class="btn btn-sm btn-outline-primary">Pólizas</a>
+                            <a href="/Cartera/Editar/@item.Id" class="btn btn-sm btn-outline-warning">Editar</a>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>

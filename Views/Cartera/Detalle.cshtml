@@ -1,0 +1,83 @@
+@model IEnumerable<ReclamosWhatsApp.Models.Poliza>
+
+@{
+    ViewData["Title"] = "Pólizas del cliente";
+}
+
+<div class="container-fluid mt-4 px-3 px-md-5">
+    <a href="/Cartera" class="btn btn-secondary mb-3">Volver</a>
+
+    <h2>Pólizas del cliente</h2>
+
+    @if (TempData["Mensaje"] != null)
+    {
+        <div class="alert alert-success">@TempData["Mensaje"]</div>
+    }
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Aseguradora</th>
+                            <th>Ramo</th>
+                            <th>Póliza</th>
+                            <th>Vehículo</th>
+                            <th>Vigencia</th>
+                            <th>Hasta</th>
+                            <th>Prima total</th>
+                            <th>Pago</th>
+                            <th>Estado</th>
+                            <th>Observaciones</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var item in Model)
+                    {
+                        <tr>
+                            <td>@item.Aseguradora</td>
+                            <td>@item.Ramo</td>
+                            <td>
+                                <strong>@item.NumeroPoliza</strong><br />
+                                <small class="text-muted">Cert. @item.Certificado / End. @item.Endoso</small>
+                            </td>
+                            <td>@item.Vehiculo</td>
+                            <td>@item.Vigencia?.ToString("dd/MM/yyyy")</td>
+                            <td>@item.Hasta?.ToString("dd/MM/yyyy")</td>
+                            <td><strong>@item.PrimaTotal</strong></td>
+                            <td>@item.EstadoPago</td>
+                            <td>
+                                @if (item.Activo)
+                                {
+                                    <span class="badge bg-success">Activa</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactiva</span>
+                                }
+                            </td>
+                            <td>@item.Observaciones</td>
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+                                    <a href="/Cartera/EditarPoliza/@item.Id" class="btn btn-sm btn-outline-primary">Editar</a>
+                                    <form method="post" asp-action="CambiarEstadoPoliza">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <input type="hidden" name="clienteId" value="@item.ClienteId" />
+                                        <input type="hidden" name="activo" value="@(!item.Activo)" />
+                                        <button type="submit" class="btn btn-sm @(item.Activo ? "btn-outline-danger" : "btn-outline-success")">
+                                            @(item.Activo ? "Inactivar" : "Activar")
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

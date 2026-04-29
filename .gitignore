@@ -1,0 +1,24 @@
+# Local secrets
+appsettings.json
+*.user
+*.suo
+
+# Build outputs
+bin/
+obj/
+ClientApp/dist/
+ClientApp/node_modules/
+
+# Logs and local runtime files
+*.log
+storage/
+Uploads/
+
+# Local data/artifacts
+*.xlsx
+*.zip
+WhatsApp Image*.jpeg
+
+# IDE/editor
+.vs/
+.vscode/

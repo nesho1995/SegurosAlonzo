@@ -1,0 +1,67 @@
+@model ReclamosWhatsApp.Models.Cliente
+
+@{
+    ViewData["Title"] = "Crear cliente";
+}
+
+<div class="container mt-4">
+    <h2>Crear cliente</h2>
+
+    <form method="post" class="card shadow-sm border-0 p-4">
+        @Html.AntiForgeryToken()
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label>Nombre</label>
+                <input asp-for="Nombre" class="form-control" required />
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label>Teléfono principal</label>
+                <input asp-for="Telefono" class="form-control" />
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label>Contacto / otros teléfonos</label>
+                <input asp-for="Contacto" class="form-control" placeholder="99999999 / 88888888" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label>Correo</label>
+                <input asp-for="Email" class="form-control" />
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label>Identidad</label>
+                <input asp-for="Identidad" class="form-control" />
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label>Cumpleaños</label>
+                <input asp-for="FechaNacimiento" type="date" class="form-control" />
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label>Ciudad</label>
+                <input asp-for="Ciudad" class="form-control" />
+            </div>
+
+            <div class="col-md-8 mb-3">
+                <label>Observaciones</label>
+                <textarea asp-for="Observaciones" class="form-control"></textarea>
+            </div>
+
+            <div class="col-md-12 mb-3">
+                <label>
+                    <input asp-for="Activo" />
+                    Activo
+                </label>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary">Guardar</button>
+            <a href="/Cartera" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>

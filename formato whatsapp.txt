@@ -1,0 +1,25 @@
+Buenas tardes, {nombre}.
+
+Le informamos que su reclamo ha sido registrado con fecha {fecha}, ocurrido en {lugar}.
+
+Para continuar con el proceso, por favor envíenos la siguiente documentación:
+
+1. Aviso de accidente firmado por el conductor y asegurado (con sello si es empresa)
+2. Certificación de tránsito
+3. Tarjeta de identidad (ambos lados)
+4. Licencia de conducir (ambos lados)
+5. Boleta de circulación
+6. Inspección de daños en Seguros Crefisa
+7. Dos cotizaciones de talleres autorizados
+8. Estar al día con el pago del seguro
+
+Talleres disponibles:
+- Ausemo – Bo. Guamilito
+- Tinte y Fricción – Colonia Honduras
+- Chassis Liner – Bo. Paz Barahona
+- Smart Paint – Bo. Barandillas
+- Finish Car – Bo. Paz Barahona
+
+Una vez recibida la documentación completa, se procederá con la evaluación del reclamo.
+
+Atentamente.
