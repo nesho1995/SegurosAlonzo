@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -25,17 +25,21 @@ import { ConfiguracionEmpresaView } from './views/ConfiguracionEmpresaView'
 import { AutomatizacionEnviosView } from './views/AutomatizacionEnviosView'
 import { CatalogosView } from './views/CatalogosView'
 import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
+import { GastosView } from './views/GastosView'
+import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operacion' },
   { id: 'clientes', label: 'Clientes', icon: Users, section: 'Operacion' },
   { id: 'reclamos', label: 'Reclamos', icon: ClipboardList, section: 'Operacion' },
   { id: 'pagos', label: 'Pagos', icon: CreditCard, section: 'Operacion' },
+  { id: 'gastos', label: 'Gastos', icon: ReceiptText, section: 'Operacion' },
   { id: 'recordatorios', label: 'Recordatorios', icon: Send, section: 'Operacion' },
-  { id: 'carga', label: 'Carga masiva', icon: Upload, section: 'Operacion' },
   { id: 'configuracion', label: 'Empresa', icon: Building2, section: 'Administracion' },
   { id: 'usuarios', label: 'Usuarios', icon: UserCog, section: 'Administracion' },
+  { id: 'whatsapp-config', label: 'WhatsApp', icon: Send, section: 'Administracion' },
   { id: 'catalogos', label: 'Catalogos', icon: Settings, section: 'Administracion' },
+  { id: 'carga', label: 'Carga masiva', icon: Upload, section: 'Administracion' },
   { id: 'talleres', label: 'Talleres', icon: Wrench, section: 'Administracion' },
   { id: 'reclamos-config', label: 'Reclamos config', icon: Settings, section: 'Administracion' },
   { id: 'envios-auto', label: 'Automatizacion envios', icon: Send, section: 'Administracion' },
@@ -81,8 +85,10 @@ function AppRouter() {
     if (target === 'automatizaciones') return hasPermission('automatizaciones.ver')
     if (target === 'configuracion') return hasPermission('configuracion.administrar')
     if (target === 'envios-auto') return hasPermission('configuracion.administrar')
+    if (target === 'whatsapp-config') return hasPermission('configuracion.administrar')
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
     if (target === 'reclamos-config') return hasPermission('configuracion.administrar')
+    if (target === 'gastos') return hasPermission('gastos.ver')
     return true
   }
 
@@ -100,6 +106,7 @@ function AppRouter() {
       {view === 'reclamos' && <ReclamosView />}
       {view === 'recordatorios' && <RemindersView />}
       {view === 'pagos' && <PaymentsView />}
+      {view === 'gastos' && <GastosView />}
       {view === 'automatizaciones' && <AutomationView />}
       {view === 'extractor' && <ExtractorView />}
       {view === 'talleres' && <WorkshopsView />}
@@ -108,6 +115,7 @@ function AppRouter() {
       {view === 'usuarios' && <UsuariosView />}
       {view === 'configuracion' && <ConfiguracionEmpresaView />}
       {view === 'envios-auto' && <AutomatizacionEnviosView />}
+      {view === 'whatsapp-config' && <WhatsAppConfigView />}
       {view === 'catalogos' && <CatalogosView />}
       {view === 'reclamos-config' && <ReclamosConfiguracionView />}
       {view === 'password' && <CambiarPasswordView />}

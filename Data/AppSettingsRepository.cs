@@ -203,6 +203,69 @@ public class AppSettingsRepository
             await cn.ExecuteAsync(sql, new { item.Key, item.Value });
     }
 
+    public async Task<WhatsAppConfig> GetWhatsAppConfigAsync(IConfiguration configuration, bool includeSecret = false)
+    {
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT setting_key `Key`, setting_value `Value`
+            FROM app_settings
+            WHERE setting_group = 'whatsapp';";
+
+        var rows = await cn.QueryAsync<(string Key, string Value)>(sql);
+        var values = rows.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+        string Get(string key, string fallback)
+            => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+        bool GetBool(string key, bool fallback)
+            => bool.TryParse(Get(key, fallback ? "true" : "false"), out var parsed) ? parsed : fallback;
+
+        var token = Get(nameof(WhatsAppConfig.AccessToken), configuration["WhatsApp:AccessToken"] ?? "");
+        return new WhatsAppConfig
+        {
+            Enabled = GetBool(nameof(WhatsAppConfig.Enabled), configuration.GetValue<bool>("WhatsApp:Enabled")),
+            GraphVersion = Get(nameof(WhatsAppConfig.GraphVersion), configuration["WhatsApp:GraphVersion"] ?? "v18.0"),
+            PhoneNumberId = Get(nameof(WhatsAppConfig.PhoneNumberId), configuration["WhatsApp:PhoneNumberId"] ?? ""),
+            AccessToken = includeSecret ? token : "",
+            AccessTokenMasked = MaskSecret(token),
+            TemplateName = Get(nameof(WhatsAppConfig.TemplateName), configuration["WhatsApp:TemplateName"] ?? ""),
+            LanguageCode = Get(nameof(WhatsAppConfig.LanguageCode), configuration["WhatsApp:LanguageCode"] ?? "es"),
+            AdminWhatsAppNumber = Get(nameof(WhatsAppConfig.AdminWhatsAppNumber), configuration["Admin:WhatsAppNumber"] ?? "")
+        };
+    }
+
+    public async Task SaveWhatsAppConfigAsync(WhatsAppConfig config, IConfiguration configuration)
+    {
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            INSERT INTO app_settings (setting_group, setting_key, setting_value)
+            VALUES ('whatsapp', @Key, @Value)
+            ON DUPLICATE KEY UPDATE
+                setting_value = VALUES(setting_value),
+                updated_at = CURRENT_TIMESTAMP;";
+
+        var current = await GetWhatsAppConfigAsync(configuration, includeSecret: true);
+        var token = string.IsNullOrWhiteSpace(config.AccessToken) || IsMaskedSecret(config.AccessToken)
+            ? current.AccessToken
+            : config.AccessToken.Trim();
+
+        var values = new Dictionary<string, string>
+        {
+            [nameof(config.Enabled)] = config.Enabled.ToString().ToLowerInvariant(),
+            [nameof(config.GraphVersion)] = string.IsNullOrWhiteSpace(config.GraphVersion) ? "v18.0" : config.GraphVersion.Trim(),
+            [nameof(config.PhoneNumberId)] = config.PhoneNumberId?.Trim() ?? "",
+            [nameof(config.AccessToken)] = token,
+            [nameof(config.TemplateName)] = config.TemplateName?.Trim() ?? "",
+            [nameof(config.LanguageCode)] = string.IsNullOrWhiteSpace(config.LanguageCode) ? "es" : config.LanguageCode.Trim(),
+            [nameof(config.AdminWhatsAppNumber)] = config.AdminWhatsAppNumber?.Trim() ?? ""
+        };
+
+        foreach (var item in values)
+            await cn.ExecuteAsync(sql, new { item.Key, item.Value });
+    }
+
     private static string NormalizeDias(string? raw, int max, string fallback)
     {
         var dias = (raw ?? "")
@@ -213,6 +276,24 @@ public class AppSettingsRepository
             .OrderByDescending(x => x)
             .ToArray();
         return dias.Length == 0 ? fallback : string.Join(",", dias);
+    }
+
+    private static string MaskSecret(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var trimmed = value.Trim();
+        if (trimmed.Length <= 8)
+            return "********";
+
+        return $"{trimmed[..4]}********{trimmed[^4..]}";
+    }
+
+    private static bool IsMaskedSecret(string value)
+    {
+        var trimmed = value.Trim();
+        return trimmed.Length > 0 && trimmed.All(ch => ch == '*');
     }
 
     public async Task<ReclamoCorreoConfig> GetReclamoCorreoConfigAsync(IConfiguration configuration)

@@ -2085,6 +2085,78 @@ body,
   flex: 0 0 auto;
 }
 
+.permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.permission-group {
+  min-width: 0;
+  border: 1px solid #d8e4e0;
+  border-radius: 8px;
+  background: #f8fbfa;
+  overflow: hidden;
+}
+
+.permission-group h3 {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid #d8e4e0;
+  font-size: 15px;
+}
+
+.permission-group .form-grid {
+  padding: 12px;
+}
+
+.permission-group .check-field {
+  align-items: flex-start;
+  height: auto;
+  min-height: 54px;
+}
+
+.permission-group .check-field span,
+.permission-group .check-field strong,
+.permission-group .check-field small {
+  display: block;
+  min-width: 0;
+}
+
+.permission-group .check-field small {
+  margin-top: 3px;
+  color: #607177;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.page-header,
+.panel-header,
+.documents-panel,
+.form-grid,
+.info-grid,
+.toolbar,
+.metric-grid,
+.mini-grid {
+  min-width: 0;
+}
+
+.icon-button,
+.primary-button {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.field input,
+.field select,
+.wide-field textarea,
+.search-box input,
+.toolbar select {
+  min-width: 0;
+}
+
 @media (max-width: 1023px) {
   .app-shell {
     display: block;
@@ -2121,6 +2193,10 @@ body,
 
   .nav-list button {
     flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .nav-list button span {
     white-space: nowrap;
   }
 
@@ -2187,6 +2263,19 @@ body,
 @media (max-width: 760px) {
   .workspace {
     padding: 12px;
+  }
+
+  .page-header {
+    display: grid;
+    gap: 14px;
+  }
+
+  .page-header h1 {
+    font-size: 26px;
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
   }
 
   .data-table,

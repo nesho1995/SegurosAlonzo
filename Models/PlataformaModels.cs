@@ -41,33 +41,3 @@ public class CategoriaTotal
     public string Categoria { get; set; } = "";
     public decimal Total { get; set; }
 }
-
-public class ComisionLote
-{
-    public int Id { get; set; }
-    public string? Aseguradora { get; set; }
-    public string ArchivoNombre { get; set; } = "";
-    public DateTime FechaCarga { get; set; }
-    public int? UsuarioId { get; set; }
-    public string Estado { get; set; } = "EN_REVISION";
-}
-
-public class ComisionDetalle
-{
-    public int Id { get; set; }
-    public int LoteId { get; set; }
-    public int? PolizaId { get; set; }
-    public string? ClienteDetectado { get; set; }
-    public string? PolizaDetectada { get; set; }
-    public string? AseguradoraDetectada { get; set; }
-    public decimal? PrimaDetectada { get; set; }
-    public decimal? PorcentajeDetectado { get; set; }
-    public decimal? ComisionDetectada { get; set; }
-    public decimal? ComisionEsperada { get; set; }
-    public decimal? Diferencia { get; set; }
-    public DateTime? FechaPago { get; set; }
-    public string? Referencia { get; set; }
-    public string Estado { get; set; } = "";
-    public string? Observaciones { get; set; }
-    public bool Revisado { get; set; }
-}

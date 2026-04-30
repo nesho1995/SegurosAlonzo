@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
 using ReclamosWhatsApp.Services.DataQuality;
 
@@ -10,12 +11,14 @@ public class WhatsAppService
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
     private readonly PhoneNormalizationService _phones;
+    private readonly AppSettingsRepository _settings;
 
-    public WhatsAppService(IConfiguration config, HttpClient http, PhoneNormalizationService phones)
+    public WhatsAppService(IConfiguration config, HttpClient http, PhoneNormalizationService phones, AppSettingsRepository settings)
     {
         _config = config;
         _http = http;
         _phones = phones;
+        _settings = settings;
     }
 
     public async Task<(bool ok, string response)> SendTemplateAsync(ReclamoWhatsApp r)
@@ -25,14 +28,14 @@ public class WhatsAppService
 
     public async Task<(bool ok, string response)> SendTextAsync(string numeroDestino, string mensaje)
     {
-        var enabled = _config.GetValue<bool>("WhatsApp:Enabled");
+        var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
 
-        if (!enabled)
-            return (false, "WhatsApp no esta habilitado en appsettings.json.");
+        if (!config.Enabled)
+            return (false, "WhatsApp esta desactivado desde Configuracion > WhatsApp.");
 
-        var token = _config["WhatsApp:AccessToken"];
-        var phoneId = _config["WhatsApp:PhoneNumberId"];
-        var version = _config["WhatsApp:GraphVersion"] ?? "v18.0";
+        var token = config.AccessToken;
+        var phoneId = config.PhoneNumberId;
+        var version = string.IsNullOrWhiteSpace(config.GraphVersion) ? "v18.0" : config.GraphVersion;
 
         if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(phoneId))
             return (false, "La configuracion de WhatsApp esta incompleta.");
@@ -68,9 +71,10 @@ public class WhatsAppService
 
     public async Task<(bool ok, string response)> NotificarAdminReclamoCompletoAsync(ReclamoWhatsApp r)
     {
-        var adminNumber = _config["Admin:WhatsAppNumber"];
+        var config = await _settings.GetWhatsAppConfigAsync(_config);
+        var adminNumber = config.AdminWhatsAppNumber;
         if (string.IsNullOrWhiteSpace(adminNumber))
-            return (false, "No esta configurado Admin:WhatsAppNumber.");
+            return (false, "No esta configurado el numero administrador de WhatsApp.");
 
         var mensaje = $@"
 Reclamo COMPLETO

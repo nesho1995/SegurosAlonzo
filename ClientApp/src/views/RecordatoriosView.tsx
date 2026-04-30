@@ -80,9 +80,12 @@ export function RemindersView() {
       <PageHeader
         eyebrow="Seguimiento"
         title="Recordatorios"
-        description="Bandeja para revisar pagos, vencimientos y renovaciones generados desde la cartera."
+        description="Se alimenta desde las cuotas y polizas: genera pendientes, envia manualmente y deja auditoria del resultado."
         onRefresh={load}
       />
+      <div className="inline-alert info">
+        Generar recordatorios busca cuotas pendientes o vencidas segun los dias configurados. No se envia automaticamente si la automatizacion esta apagada; quedan en PENDIENTE_ENVIO para revisarlos.
+      </div>
       <div className="action-row page-actions">
         <button className="primary-button" disabled={busy} onClick={() => void runAction(generarRecordatorios, 'Recordatorios generados.')}>
           <Send size={18} />Generar recordatorios
@@ -103,7 +106,7 @@ export function RemindersView() {
             <Metric title="Errores" value={data.stats.errores} hint="Requieren atencion" tone="red" icon={AlertTriangle} />
           </section>
           <article className="panel">
-            <PanelTitle title={`${data.total} recordatorios`} subtitle="Bandeja operativa para revisar pagos, vencimientos y renovaciones." />
+            <PanelTitle title={`${data.total} recordatorios`} subtitle="PENDIENTE_ENVIO se puede enviar, ERROR_ENVIO permite reintentar y ENVIADO queda cerrado." />
             <DataTable
               headers={['Cliente', 'Telefono', 'Poliza', 'Cuota', 'Fecha vence', 'Monto', 'Dias', 'Estado', 'Acciones']}
               rows={data.items.map((item) => [

@@ -23,6 +23,7 @@ export function PaymentsView() {
   const [paymentForm, setPaymentForm] = useState({ monto: '', fechaPago: '', metodoPago: 'TRANSFERENCIA', documentoId: '', numeroRecibo: '', referenciaBanco: '', observaciones: '' })
   const [message, setMessage] = useState<string | null>(null)
   const [hideList, setHideList] = useState(false)
+  const saldoSeleccionado = selectedPayment ? Math.max(0, Number(selectedPayment.monto || 0) - Number(selectedPayment.montoPagado || 0)) : 0
 
   async function load() {
     setLoading(true)
@@ -99,7 +100,7 @@ export function PaymentsView() {
       <PageHeader
         eyebrow="Cobranza"
         title="Pagos y cuotas"
-        description="Bandeja para revisar cuotas vencidas, pendientes y pagadas desde la cartera actual."
+        description="Cada fila representa una cuota real de una poliza: pendiente por cobrar, parcial o pagada."
         onRefresh={load}
       />
       <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'PENDIENTE', 'VENCIDA', 'PAGADA', 'PARCIAL', 'HOY', 'PROXIMOS_7']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
@@ -112,6 +113,9 @@ export function PaymentsView() {
             <button className="icon-button secondary" type="button" onClick={() => setHideList((value) => !value)}>
               {hideList ? 'Mostrar cuotas' : 'Ocultar cuotas'}
             </button>
+          </div>
+          <div className="inline-alert info">
+            Si una cuota no tiene pago registrado aparece como cuenta por cobrar. Al registrar un abono se actualiza el estado y aqui mismo puedes adjuntar o revisar el comprobante.
           </div>
           <section className="mini-grid">
             <Metric title="Vencidas" value={data.stats.vencidas} hint={moneySafe(data.stats.montoPendiente)} tone="red" icon={AlertTriangle} />
@@ -127,7 +131,7 @@ export function PaymentsView() {
             </div>
           )}
           {!hideList && <article className="panel">
-            <PanelTitle title={`${data.total} cuentas por cobrar`} subtitle="Incluye pagos registrados y cuotas pendientes aunque aun no tengan pago." />
+            <PanelTitle title={`${data.total} cuotas visibles`} subtitle="Incluye pagos registrados y cuotas pendientes aunque aun no tengan pago." />
             <DataTable
               headers={['Cliente', 'Poliza', 'Cuota', 'Vence', 'Monto cuota', 'Estado', 'Pagado', 'Metodo', 'Referencia', 'Acciones']}
               rows={data.items.map((item) => [
@@ -142,8 +146,8 @@ export function PaymentsView() {
                 item.referenciaBanco || item.numeroRecibo || 'Sin referencia',
                 <div className="table-actions">
                   <button className="icon-button secondary" onClick={() => selectPayment(item)}><CheckCircle2 size={16} />Registrar pago</button>
-                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><FileUp size={16} />Subir comprobante</button>
-                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><Eye size={16} />Ver comprobante</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><FileUp size={16} />Comprobante</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><Eye size={16} />Ver docs</button>
                 </div>,
               ])}
             />
@@ -152,6 +156,12 @@ export function PaymentsView() {
           {selectedPayment && (
             <article className="panel mt-panel">
               <PanelTitle title="Pago y comprobantes" subtitle={`${selectedPayment.cliente} / cuota ${selectedPayment.numeroCuota}`} />
+              <div className="info-grid compact">
+                <div className="info-item"><span>Monto cuota</span><strong>{moneySafe(selectedPayment.monto)}</strong></div>
+                <div className="info-item"><span>Pagado</span><strong>{moneySafe(selectedPayment.montoPagado)}</strong></div>
+                <div className="info-item"><span>Saldo</span><strong>{moneySafe(saldoSeleccionado)}</strong></div>
+                <div className="info-item"><span>Estado</span><strong>{statusLabel(selectedPayment.estado)}</strong></div>
+              </div>
               <div className="form-grid compact-form">
                 <label className="field"><span>Monto</span><input type="number" value={paymentForm.monto} onChange={(event) => setPaymentForm({ ...paymentForm, monto: event.target.value })} /></label>
                 <label className="field"><span>Fecha pago</span><input type="date" value={paymentForm.fechaPago} onChange={(event) => setPaymentForm({ ...paymentForm, fechaPago: event.target.value })} /></label>

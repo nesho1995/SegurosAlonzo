@@ -1,4 +1,4 @@
-import { getJson, sendJson } from './http'
+import { getJson, postJson, sendJson } from './http'
 
 export type EmpresaConfiguracion = {
   id: number
@@ -23,6 +23,17 @@ export type EnvioAutomaticoConfig = {
   plantillaReclamo: string
 }
 
+export type WhatsAppConfig = {
+  enabled: boolean
+  graphVersion: string
+  phoneNumberId: string
+  accessToken: string
+  accessTokenMasked: string
+  templateName: string
+  languageCode: string
+  adminWhatsAppNumber: string
+}
+
 export function getEmpresaConfiguracion() {
   return getJson<EmpresaConfiguracion>('/api/configuracion/empresa')
 }
@@ -37,6 +48,18 @@ export function getEnvioAutomaticoConfig() {
 
 export function updateEnvioAutomaticoConfig(config: EnvioAutomaticoConfig) {
   return sendJson('/api/configuracion/envios', 'PUT', config)
+}
+
+export function getWhatsAppConfig() {
+  return getJson<WhatsAppConfig>('/api/configuracion/whatsapp')
+}
+
+export function updateWhatsAppConfig(config: WhatsAppConfig) {
+  return sendJson('/api/configuracion/whatsapp', 'PUT', config)
+}
+
+export function probarWhatsApp(telefono: string, mensaje: string) {
+  return postJson<{ ok: boolean; response: string }>('/api/configuracion/whatsapp/probar', { telefono, mensaje })
 }
 
 export async function uploadEmpresaLogo(file: File) {

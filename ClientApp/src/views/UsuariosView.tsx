@@ -9,6 +9,47 @@ import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
 import type { Role, UserAdmin } from '../types/auth'
 
+const permissionLabels: Record<string, string> = {
+  'dashboard.ver': 'Ver dashboard',
+  'clientes.ver': 'Ver clientes',
+  'clientes.crear': 'Crear clientes',
+  'clientes.editar': 'Editar clientes',
+  'polizas.ver': 'Ver polizas',
+  'polizas.crear': 'Crear polizas',
+  'polizas.editar': 'Editar polizas',
+  'pagos.ver': 'Ver pagos',
+  'pagos.editar': 'Registrar pagos',
+  'reclamos.ver': 'Ver reclamos',
+  'reclamos.editar': 'Editar reclamos',
+  'reclamos.enviar': 'Enviar reclamos',
+  'recordatorios.ver': 'Ver recordatorios',
+  'recordatorios.enviar': 'Enviar recordatorios',
+  'talleres.ver': 'Ver talleres',
+  'talleres.editar': 'Editar talleres',
+  'documentos.ver': 'Ver documentos',
+  'documentos.subir': 'Subir documentos',
+  'documentos.eliminar': 'Eliminar documentos',
+  'gastos.ver': 'Ver gastos',
+  'gastos.crear': 'Crear gastos',
+  'gastos.editar': 'Editar gastos',
+  'gastos.eliminar': 'Eliminar gastos',
+  'usuarios.administrar': 'Administrar usuarios',
+  'configuracion.administrar': 'Administrar configuracion',
+  'catalogos.administrar': 'Administrar catalogos',
+  'automatizaciones.ver': 'Ver automatizaciones',
+  'automatizaciones.crear': 'Crear automatizaciones',
+  'automatizaciones.editar': 'Editar automatizaciones',
+  'automatizaciones.eliminar': 'Eliminar automatizaciones',
+  'auditoria.ver': 'Ver auditoria',
+}
+
+const permissionGroups = [
+  { title: 'Operacion', prefixes: ['dashboard.', 'clientes.', 'polizas.', 'pagos.', 'reclamos.', 'recordatorios.'] },
+  { title: 'Documentos y gastos', prefixes: ['documentos.', 'gastos.', 'talleres.'] },
+  { title: 'Administracion', prefixes: ['usuarios.', 'configuracion.', 'catalogos.', 'automatizaciones.'] },
+  { title: 'Auditoria', prefixes: ['auditoria.'] },
+]
+
 export function UsuariosView() {
   const [usuarios, setUsuarios] = useState<UserAdmin[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -22,6 +63,7 @@ export function UsuariosView() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const selectedUser = selectedUserId ? usuarios.find((item) => item.id === selectedUserId) : null
 
   async function load() {
     setLoading(true)
@@ -184,24 +226,14 @@ export function UsuariosView() {
       {selectedUserId && (
         <article className="panel mt-panel">
           <PanelTitle
-            title="Permisos personalizados por usuario"
-            subtitle="Si guardas aqui, este usuario usara estos permisos en lugar de los del rol."
+            title={`Permisos de ${selectedUser?.username || 'usuario'}`}
+            subtitle={`${permissionDraft.length} permisos seleccionados. Si guardas aqui, este usuario usara estos permisos en lugar de los del rol.`}
           />
-          <div className="form-grid">
-            {permissionsCatalog.map((permission) => (
-              <label className="check-field" key={permission}>
-                <input
-                  type="checkbox"
-                  checked={permissionDraft.includes(permission)}
-                  onChange={(event) => {
-                    if (event.target.checked) setPermissionDraft((items) => [...items, permission])
-                    else setPermissionDraft((items) => items.filter((item) => item !== permission))
-                  }}
-                />
-                {permission}
-              </label>
-            ))}
-            <div className="form-actions wide-field">
+          <div className="documents-panel">
+            <div className="form-actions">
+              <button className="icon-button secondary" onClick={() => setPermissionDraft([])}>Usar solo rol</button>
+              <button className="icon-button secondary" onClick={() => setPermissionDraft(permissionsCatalog)}>Seleccionar todo</button>
+              <button className="icon-button secondary" onClick={() => setPermissionDraft([])}>Limpiar</button>
               <button
                 className="primary-button"
                 onClick={() => {
@@ -212,6 +244,35 @@ export function UsuariosView() {
                 <Save size={16} />Guardar permisos
               </button>
             </div>
+          </div>
+          <div className="permissions-grid">
+            {permissionGroups.map((group) => {
+              const items = permissionsCatalog.filter((permission) => group.prefixes.some((prefix) => permission.startsWith(prefix)))
+              if (items.length === 0) return null
+              return (
+                <section className="permission-group" key={group.title}>
+                  <h3>{group.title}</h3>
+                  <div className="form-grid single-column">
+                    {items.map((permission) => (
+                      <label className="check-field" key={permission}>
+                        <input
+                          type="checkbox"
+                          checked={permissionDraft.includes(permission)}
+                          onChange={(event) => {
+                            if (event.target.checked) setPermissionDraft((selected) => [...selected, permission])
+                            else setPermissionDraft((selected) => selected.filter((item) => item !== permission))
+                          }}
+                        />
+                        <span>
+                          <strong>{permissionLabels[permission] || permission}</strong>
+                          <small>{permission}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
           </div>
         </article>
       )}

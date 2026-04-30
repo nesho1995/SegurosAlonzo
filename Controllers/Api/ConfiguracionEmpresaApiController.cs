@@ -19,13 +19,23 @@ public class ConfiguracionEmpresaApiController : ControllerBase
     private readonly AppSettingsRepository _settings;
     private readonly AuditoriaService _auditoria;
     private readonly IWebHostEnvironment _env;
+    private readonly IConfiguration _configuration;
+    private readonly WhatsAppService _whatsApp;
 
-    public ConfiguracionEmpresaApiController(EmpresaConfiguracionRepository repo, AppSettingsRepository settings, AuditoriaService auditoria, IWebHostEnvironment env)
+    public ConfiguracionEmpresaApiController(
+        EmpresaConfiguracionRepository repo,
+        AppSettingsRepository settings,
+        AuditoriaService auditoria,
+        IWebHostEnvironment env,
+        IConfiguration configuration,
+        WhatsAppService whatsApp)
     {
         _repo = repo;
         _settings = settings;
         _auditoria = auditoria;
         _env = env;
+        _configuration = configuration;
+        _whatsApp = whatsApp;
     }
 
     [HttpGet]
@@ -142,6 +152,51 @@ public class ConfiguracionEmpresaApiController : ControllerBase
             1,
             $"Configuracion de automatizacion actualizada. Reclamos={(config.AutoEnviarReclamos ? "ACTIVO" : "INACTIVO")}, Pagos={(config.AutoEnviarRecordatoriosPago ? "ACTIVO" : "INACTIVO")}, Polizas={(config.AutoEnviarRecordatoriosPoliza ? "ACTIVO" : "INACTIVO")}.");
         return NoContent();
+    }
+
+    [HttpGet("/api/configuracion/whatsapp")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> GetWhatsApp()
+    {
+        return Ok(await _settings.GetWhatsAppConfigAsync(_configuration));
+    }
+
+    [HttpPut("/api/configuracion/whatsapp")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> UpdateWhatsApp(WhatsAppConfig config)
+    {
+        if (config.Enabled && string.IsNullOrWhiteSpace(config.PhoneNumberId))
+            return BadRequest(new { error = "Para activar WhatsApp debes indicar el Phone Number ID." });
+
+        await _settings.SaveWhatsAppConfigAsync(config, _configuration);
+        await _auditoria.RegistrarAsync(
+            "CAMBIAR_CONFIGURACION_WHATSAPP",
+            "CONFIGURACION",
+            1,
+            $"WhatsApp produccion {(config.Enabled ? "activado" : "desactivado")}.");
+        return NoContent();
+    }
+
+    [HttpPost("/api/configuracion/whatsapp/probar")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> ProbarWhatsApp(WhatsAppTestRequest request)
+    {
+        var config = await _settings.GetWhatsAppConfigAsync(_configuration);
+        var telefono = string.IsNullOrWhiteSpace(request.Telefono) ? config.AdminWhatsAppNumber : request.Telefono;
+        if (string.IsNullOrWhiteSpace(telefono))
+            return BadRequest(new { error = "Indica un telefono de prueba o configura el numero administrador." });
+
+        var mensaje = string.IsNullOrWhiteSpace(request.Mensaje)
+            ? "Prueba de WhatsApp desde Seguros Alonzo."
+            : request.Mensaje.Trim();
+
+        var result = await _whatsApp.SendTextAsync(telefono, mensaje);
+        await _auditoria.RegistrarAsync(
+            result.ok ? "PROBAR_WHATSAPP_OK" : "PROBAR_WHATSAPP_ERROR",
+            "CONFIGURACION",
+            1,
+            result.response);
+        return Ok(new { result.ok, result.response });
     }
 
     private int? CurrentUserId()
