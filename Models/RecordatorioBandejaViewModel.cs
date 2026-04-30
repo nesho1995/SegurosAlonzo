@@ -12,7 +12,7 @@ public class RecordatorioBandejaViewModel
 
 public class RecordatorioFiltro
 {
-    public string? Estado { get; set; } = "PENDIENTE";
+    public string? Estado { get; set; } = "PENDIENTE_ENVIO";
     public string? Tipo { get; set; }
     public string? Buscar { get; set; }
     public int Pagina { get; set; } = 1;

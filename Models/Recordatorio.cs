@@ -15,6 +15,9 @@ public class Recordatorio
     public string? NumeroPoliza { get; set; }
     public string? Aseguradora { get; set; }
     public string? Ramo { get; set; }
+    public int? NumeroCuota { get; set; }
+    public decimal? Monto { get; set; }
+    public int? Dias { get; set; }
     public DateTime? FechaObjetivo { get; set; }
 
     [Required]
@@ -23,7 +26,7 @@ public class Recordatorio
     [Required]
     public string Mensaje { get; set; } = "";
 
-    public string Estado { get; set; } = "PENDIENTE";
+    public string Estado { get; set; } = "PENDIENTE_ENVIO";
     public DateTime FechaCreacion { get; set; }
     public DateTime? FechaEnvio { get; set; }
     public string? Error { get; set; }

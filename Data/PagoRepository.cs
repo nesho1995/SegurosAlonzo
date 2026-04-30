@@ -43,7 +43,7 @@ public class PagoRepository
 
         foreach (var poliza in polizas)
         {
-            var cantidad = Math.Min(poliza.Cuotas ?? 0, 10);
+            var cantidad = Math.Min(poliza.Cuotas ?? 0, 12);
             if (cantidad <= 0 || poliza.PrimaTotal is null)
                 continue;
 
@@ -80,10 +80,23 @@ public class PagoRepository
         pagina = pagina < 1 ? 1 : pagina;
         pageSize = pageSize is < 10 or > 100 ? 25 : pageSize;
 
-        if (!string.IsNullOrWhiteSpace(estado))
+        var estadoNormalizado = (estado ?? "").Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(estadoNormalizado) && estadoNormalizado != "TODOS")
         {
-            where.Add("pc.estado = @estado");
-            parameters.Add("estado", estado);
+            if (estadoNormalizado == "HOY")
+            {
+                where.Add("pc.fecha_vencimiento = CURDATE()");
+            }
+            else if (estadoNormalizado == "PROXIMOS_7")
+            {
+                where.Add("pc.fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)");
+                where.Add("pc.estado IN ('PENDIENTE','PARCIAL')");
+            }
+            else
+            {
+                where.Add("pc.estado = @estado");
+                parameters.Add("estado", estadoNormalizado);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(buscar))
@@ -110,12 +123,13 @@ public class PagoRepository
                 pc.fecha_vencimiento FechaVencimiento,
                 pc.monto Monto,
                 COALESCE((SELECT SUM(pp.monto) FROM poliza_pagos pp WHERE pp.cuota_id = pc.id AND pp.activo = 1), 0) MontoPagado,
+                (SELECT pp.metodo_pago FROM poliza_pagos pp WHERE pp.cuota_id = pc.id AND pp.activo = 1 ORDER BY pp.fecha_pago DESC, pp.id DESC LIMIT 1) MetodoPago,
                 pc.estado Estado,
                 pc.fecha_pago FechaPago,
                 pc.comprobante_url ComprobanteUrl,
                 pc.documento_id DocumentoId,
                 pc.numero_recibo NumeroRecibo,
-                pc.referencia_banco ReferenciaBanco,
+                COALESCE(pc.referencia_banco, (SELECT pp.referencia_banco FROM poliza_pagos pp WHERE pp.cuota_id = pc.id AND pp.activo = 1 ORDER BY pp.fecha_pago DESC, pp.id DESC LIMIT 1)) ReferenciaBanco,
                 pc.observaciones Observaciones,
                 pc.fecha_creacion FechaCreacion
             FROM poliza_cuotas pc
@@ -184,6 +198,30 @@ public class PagoRepository
                     ELSE 'EN_CUOTAS'
                 END
             WHERE q.poliza_id IS NOT NULL;");
+    }
+
+    public async Task<IEnumerable<object>> GetPolizasSinCuotasAsync()
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT
+                p.id PolizaId,
+                p.numero_poliza NumeroPoliza,
+                c.nombre Cliente,
+                p.cuotas Cuotas,
+                p.prima_total PrimaTotal
+            FROM polizas p
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            LEFT JOIN poliza_cuotas pc ON pc.poliza_id = p.id
+            WHERE p.activo = 1
+            GROUP BY p.id, p.numero_poliza, c.nombre, p.cuotas, p.prima_total
+            HAVING COUNT(pc.id) = 0
+            ORDER BY c.nombre ASC, p.numero_poliza ASC
+            LIMIT 25;";
+
+        return await cn.QueryAsync(sql);
     }
 
     public async Task MarcarPagadaAsync(int id, DateTime fechaPago, string? observaciones)

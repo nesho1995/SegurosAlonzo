@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -21,29 +21,27 @@ import { CambiarPasswordView } from './views/CambiarPasswordView'
 import { AccessDeniedView } from './views/AccessDeniedView'
 import { LoadingCard } from './components/LoadingState'
 import { AutomationView } from './views/AutomationView'
-import { GastosView } from './views/GastosView'
 import { ConfiguracionEmpresaView } from './views/ConfiguracionEmpresaView'
 import { AutomatizacionEnviosView } from './views/AutomatizacionEnviosView'
 import { CatalogosView } from './views/CatalogosView'
 import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'General' },
-  { id: 'clientes', label: 'Clientes', icon: Users, section: 'Cartera y Cobranza' },
-  { id: 'pagos', label: 'Pagos', icon: CreditCard, section: 'Cartera y Cobranza' },
-  { id: 'recordatorios', label: 'Recordatorios', icon: Send, section: 'Cartera y Cobranza' },
-  { id: 'gastos', label: 'Gastos', icon: ReceiptText, section: 'Cartera y Cobranza' },
-  { id: 'reclamos', label: 'Reclamos', icon: ClipboardList, section: 'Reclamos' },
-  { id: 'talleres', label: 'Talleres', icon: Wrench, section: 'Reclamos' },
-  { id: 'reclamos-config', label: 'Reclamos config', icon: Settings, section: 'Reclamos' },
-  { id: 'automatizaciones', label: 'Automatizaciones', icon: Bot, section: 'Operacion' },
-  { id: 'envios-auto', label: 'Automatizacion de envios', icon: Send, section: 'Operacion' },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operacion' },
+  { id: 'clientes', label: 'Clientes', icon: Users, section: 'Operacion' },
+  { id: 'reclamos', label: 'Reclamos', icon: ClipboardList, section: 'Operacion' },
+  { id: 'pagos', label: 'Pagos', icon: CreditCard, section: 'Operacion' },
+  { id: 'recordatorios', label: 'Recordatorios', icon: Send, section: 'Operacion' },
   { id: 'carga', label: 'Carga masiva', icon: Upload, section: 'Operacion' },
-  { id: 'extractor', label: 'Extractor', icon: Settings, section: 'Operacion' },
-  { id: 'auditoria', label: 'Auditoria', icon: FileClock, section: 'Administracion' },
+  { id: 'configuracion', label: 'Empresa', icon: Building2, section: 'Administracion' },
   { id: 'usuarios', label: 'Usuarios', icon: UserCog, section: 'Administracion' },
   { id: 'catalogos', label: 'Catalogos', icon: Settings, section: 'Administracion' },
-  { id: 'configuracion', label: 'Empresa', icon: Building2, section: 'Administracion' },
+  { id: 'talleres', label: 'Talleres', icon: Wrench, section: 'Administracion' },
+  { id: 'reclamos-config', label: 'Reclamos config', icon: Settings, section: 'Administracion' },
+  { id: 'envios-auto', label: 'Automatizacion envios', icon: Send, section: 'Administracion' },
+  { id: 'extractor', label: 'Configuracion', icon: Settings, section: 'Administracion' },
+  { id: 'automatizaciones', label: 'Automatizaciones', icon: Bot, section: 'Administracion' },
+  { id: 'auditoria', label: 'Auditoria', icon: FileClock, section: 'Auditoria' },
 ] satisfies NavItem[]
 
 function App() {
@@ -81,7 +79,6 @@ function AppRouter() {
     if (target === 'extractor') return hasPermission('configuracion.administrar')
     if (target === 'usuarios') return hasPermission('usuarios.administrar')
     if (target === 'automatizaciones') return hasPermission('automatizaciones.ver')
-    if (target === 'gastos') return hasPermission('gastos.ver')
     if (target === 'configuracion') return hasPermission('configuracion.administrar')
     if (target === 'envios-auto') return hasPermission('configuracion.administrar')
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
@@ -103,7 +100,6 @@ function AppRouter() {
       {view === 'reclamos' && <ReclamosView />}
       {view === 'recordatorios' && <RemindersView />}
       {view === 'pagos' && <PaymentsView />}
-      {view === 'gastos' && <GastosView />}
       {view === 'automatizaciones' && <AutomationView />}
       {view === 'extractor' && <ExtractorView />}
       {view === 'talleres' && <WorkshopsView />}

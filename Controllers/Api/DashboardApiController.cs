@@ -18,7 +18,6 @@ public class DashboardApiController : ControllerBase
     private readonly TallerRepository _talleres;
     private readonly AutomationRepository _automatizaciones;
     private readonly GastoRepository _gastos;
-    private readonly ComisionRepository _comisiones;
 
     public DashboardApiController(
         ReclamoRepository reclamos,
@@ -27,8 +26,7 @@ public class DashboardApiController : ControllerBase
         PagoRepository pagos,
         TallerRepository talleres,
         AutomationRepository automatizaciones,
-        GastoRepository gastos,
-        ComisionRepository comisiones)
+        GastoRepository gastos)
     {
         _reclamos = reclamos;
         _cartera = cartera;
@@ -37,7 +35,6 @@ public class DashboardApiController : ControllerBase
         _talleres = talleres;
         _automatizaciones = automatizaciones;
         _gastos = gastos;
-        _comisiones = comisiones;
     }
 
     [HttpGet]
@@ -73,7 +70,6 @@ public class DashboardApiController : ControllerBase
             RecordatoriosErrores = Convert.ToInt32(recordatorios.Errores),
             AutomatizacionesErrores = await _automatizaciones.CountErroresAsync(desde, hasta),
             GastosMes = await _gastos.GetTotalMesAsync(),
-            ComisionesPendientes = await _comisiones.CountPendientesAsync(),
             DatosPendientesRevision = await _cartera.CountDatosPendientesRevisionAsync(),
             ProximasRenovaciones = await _cartera.GetProximasRenovacionesAsync(45, 8, aseguradora, ciudad)
         };

@@ -25,8 +25,9 @@ public class PagosApiController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get(string? estado = "PENDIENTE", string? buscar = null, int pagina = 1, int pageSize = 25)
+    public async Task<IActionResult> Get(string? estado = "TODOS", string? buscar = null, int pagina = 1, int pageSize = 25)
     {
+        await _pagos.GenerarCuotasAsync();
         await _pagos.ActualizarEstadosVencidosAsync();
         var (items, total) = await _pagos.GetCuotasAsync(estado, buscar, pagina, pageSize);
         foreach (var item in items.Where(x => string.Equals(x.Estado, "VENCIDA", StringComparison.OrdinalIgnoreCase)).Take(50))
@@ -39,7 +40,8 @@ public class PagosApiController : ControllerBase
             pagina,
             pageSize,
             totalPaginas = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)),
-            stats = await _pagos.GetStatsAsync()
+            stats = await _pagos.GetStatsAsync(),
+            alertas = await _pagos.GetPolizasSinCuotasAsync()
         });
     }
 

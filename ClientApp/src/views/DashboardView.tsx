@@ -94,7 +94,6 @@ export function DashboardView() {
         <Metric title="Reglas con errores" value={model.automatizacionesErrores} hint="Ejecuciones con error" tone={model.automatizacionesErrores ? 'red' : 'green'} icon={AlertTriangle} />
         <Metric title="Prima activa" value={moneySafe(model.primaTotalActiva)} hint="Cartera vigente" tone="slate" icon={CheckCircle2} />
         <Metric title="Gastos del mes" value={moneySafe(model.gastosMes)} hint="Operacion actual" tone="slate" icon={ReceiptText} />
-        <Metric title="Comisiones" value={model.comisionesPendientes} hint="Pendientes de revisar" tone={model.comisionesPendientes ? 'amber' : 'green'} icon={Scale} />
         <Metric title="Datos por revisar" value={model.datosPendientesRevision} hint="Calidad de cartera" tone={model.datosPendientesRevision ? 'amber' : 'green'} icon={ShieldCheck} />
         <Metric title="Alertas criticas" value={criticalAlerts} hint="Vencidas, errores y pagos" tone="red" icon={AlertTriangle} />
       </section>
@@ -135,4 +134,3 @@ export function DashboardView() {
     </>
   )
 }
-

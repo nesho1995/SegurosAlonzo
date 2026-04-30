@@ -10,10 +10,10 @@
 .sidebar {
   position: sticky;
   top: 0;
-  flex: 0 0 260px;
-  width: 260px;
-  min-width: 260px;
-  max-width: 260px;
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -108,7 +108,8 @@
 .nav-list button span {
   min-width: 0;
   white-space: normal;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .nav-list button:hover,
@@ -1796,6 +1797,15 @@ th:first-child {
     white-space: nowrap;
   }
 
+  .nav-group {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-group-title {
+    display: none;
+  }
+
   .session-box {
     grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
@@ -1909,10 +1919,10 @@ body,
 .sidebar {
   position: sticky;
   top: 0;
-  flex: 0 0 260px;
-  width: 260px;
-  min-width: 260px;
-  max-width: 260px;
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
   height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;

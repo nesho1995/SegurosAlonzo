@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CalendarClock, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileUp } from 'lucide-react'
 import { getPagos, registrarPagoCuota } from '../api/pagosApi'
 import { StatusPill } from '../components/Badge'
 import { CellTitle, DataTable } from '../components/DataTable'
@@ -28,7 +28,7 @@ export function PaymentsView() {
     setLoading(true)
     setError(null)
     try {
-      const query = new URLSearchParams({ pageSize: '15' })
+      const query = new URLSearchParams({ pageSize: '50' })
       if (estado !== 'TODOS') query.set('estado', estado)
       if (buscar.trim()) query.set('buscar', buscar.trim())
       setData(await getPagos(query))
@@ -66,9 +66,15 @@ export function PaymentsView() {
     }
   }
 
+  function selectPayment(item: Payment) {
+    const saldo = Math.max(0, Number(item.monto || 0) - Number(item.montoPagado || 0))
+    setSelectedPayment(item)
+    setPaymentForm((current) => ({ ...current, monto: saldo > 0 ? String(saldo) : current.monto }))
+  }
+
   useEffect(() => {
     let alive = true
-    const query = new URLSearchParams({ pageSize: '15' })
+    const query = new URLSearchParams({ pageSize: '50' })
     if (estado !== 'TODOS') query.set('estado', estado)
     if (buscar.trim()) query.set('buscar', buscar.trim())
 
@@ -96,7 +102,7 @@ export function PaymentsView() {
         description="Bandeja para revisar cuotas vencidas, pendientes y pagadas desde la cartera actual."
         onRefresh={load}
       />
-      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'VENCIDA', 'PENDIENTE', 'PARCIAL', 'PAGADA']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
+      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'PENDIENTE', 'VENCIDA', 'PAGADA', 'PARCIAL', 'HOY', 'PROXIMOS_7']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
       {loading && <LoadingCard text="Cargando cuotas..." />}
       {error && <ErrorCard text={error} />}
       {message && <div className="inline-alert success">{message}</div>}
@@ -113,21 +119,35 @@ export function PaymentsView() {
             <Metric title="Parciales" value={data.stats.parciales} hint="Con abonos" tone="blue" icon={CalendarClock} />
             <Metric title="Pagadas" value={data.stats.pagadas} hint="Historico" tone="green" icon={CheckCircle2} />
           </section>
+          {data.alertas && data.alertas.length > 0 && (
+            <div className="inline-alert warning">
+              {data.alertas.length === 1
+                ? `Esta poliza no tiene cuotas generadas: ${data.alertas[0].cliente} / ${data.alertas[0].numeroPoliza || 'sin poliza'}.`
+                : `${data.alertas.length} polizas no tienen cuotas generadas.`}
+            </div>
+          )}
           {!hideList && <article className="panel">
-            <PanelTitle title={`${data.total} cuotas`} subtitle="Primeras filas de cobranza para validar datos antes de activar automatizaciones." />
+            <PanelTitle title={`${data.total} cuentas por cobrar`} subtitle="Incluye pagos registrados y cuotas pendientes aunque aun no tengan pago." />
             <DataTable
-              headers={['Cliente', 'Cuota', 'Poliza', 'Vence', 'Monto', 'Pagado', 'Estado', 'Documentos']}
+              headers={['Cliente', 'Poliza', 'Cuota', 'Vence', 'Monto cuota', 'Estado', 'Pagado', 'Metodo', 'Referencia', 'Acciones']}
               rows={data.items.map((item) => [
                 <CellTitle title={item.cliente} subtitle={item.telefono || 'Sin telefono'} />,
-                `#${item.numeroCuota}`,
                 <CellTitle title={item.numeroPoliza || 'Sin poliza'} subtitle={compactMeta([item.aseguradora, item.ramo])} />,
+                `#${item.numeroCuota}`,
                 dateFmt.format(new Date(item.fechaVencimiento)),
                 moneySafe(item.monto),
-                moneySafe(item.montoPagado),
                 <StatusPill text={statusLabel(item.estado)} tone={stateTone(item.estado)} />,
-                <button className="icon-button secondary" onClick={() => setSelectedPayment(item)}>Ver documentos</button>,
+                moneySafe(item.montoPagado),
+                item.metodoPago || 'Sin pago',
+                item.referenciaBanco || item.numeroRecibo || 'Sin referencia',
+                <div className="table-actions">
+                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><CheckCircle2 size={16} />Registrar pago</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><FileUp size={16} />Subir comprobante</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><Eye size={16} />Ver comprobante</button>
+                </div>,
               ])}
             />
+            {data.items.length === 0 && <div className="empty">No hay cuotas para el filtro seleccionado.</div>}
           </article>}
           {selectedPayment && (
             <article className="panel mt-panel">

@@ -15,6 +15,7 @@ public class RecordatorioRepository
     public async Task<(IEnumerable<Recordatorio> items, int total)> GetAsync(RecordatorioFiltro filtro)
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
 
         filtro.Pagina = filtro.Pagina < 1 ? 1 : filtro.Pagina;
         filtro.PageSize = filtro.PageSize is < 10 or > 100 ? 25 : filtro.PageSize;
@@ -22,10 +23,11 @@ public class RecordatorioRepository
         var where = new List<string>();
         var parameters = new DynamicParameters();
 
-        if (!string.IsNullOrWhiteSpace(filtro.Estado))
+        var estado = (filtro.Estado ?? "").Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(estado) && estado != "TODOS")
         {
             where.Add("r.estado = @estado");
-            parameters.Add("estado", filtro.Estado);
+            parameters.Add("estado", estado);
         }
 
         if (!string.IsNullOrWhiteSpace(filtro.Tipo))
@@ -58,6 +60,9 @@ public class RecordatorioRepository
                 p.numero_poliza NumeroPoliza,
                 p.aseguradora Aseguradora,
                 p.ramo Ramo,
+                pc.numero_cuota NumeroCuota,
+                pc.monto Monto,
+                DATEDIFF(r.fecha_objetivo, CURDATE()) Dias,
                 r.fecha_objetivo FechaObjetivo,
                 r.asunto Asunto,
                 r.mensaje Mensaje,
@@ -68,9 +73,10 @@ public class RecordatorioRepository
             FROM recordatorios r
             INNER JOIN clientes c ON c.id = r.cliente_id
             LEFT JOIN polizas p ON p.id = r.poliza_id
+            LEFT JOIN poliza_cuotas pc ON pc.id = r.cuota_id
             {whereSql}
             ORDER BY
-                CASE r.estado WHEN 'PENDIENTE' THEN 0 WHEN 'ERROR' THEN 1 WHEN 'ENVIADO' THEN 2 ELSE 3 END,
+                CASE r.estado WHEN 'PENDIENTE_ENVIO' THEN 0 WHEN 'ERROR_ENVIO' THEN 1 WHEN 'ENVIO_DESACTIVADO' THEN 2 WHEN 'ENVIADO' THEN 3 ELSE 4 END,
                 r.fecha_objetivo ASC,
                 r.id DESC
             LIMIT @limit OFFSET @offset;";
@@ -80,6 +86,7 @@ public class RecordatorioRepository
             FROM recordatorios r
             INNER JOIN clientes c ON c.id = r.cliente_id
             LEFT JOIN polizas p ON p.id = r.poliza_id
+            LEFT JOIN poliza_cuotas pc ON pc.id = r.cuota_id
             {whereSql};";
 
         var items = await cn.QueryAsync<Recordatorio>(sql, parameters);
@@ -91,6 +98,7 @@ public class RecordatorioRepository
     public async Task<Recordatorio?> GetByIdAsync(int id)
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
 
         const string sql = @"
             SELECT
@@ -105,6 +113,9 @@ public class RecordatorioRepository
                 p.numero_poliza NumeroPoliza,
                 p.aseguradora Aseguradora,
                 p.ramo Ramo,
+                pc.numero_cuota NumeroCuota,
+                pc.monto Monto,
+                DATEDIFF(r.fecha_objetivo, CURDATE()) Dias,
                 r.fecha_objetivo FechaObjetivo,
                 r.asunto Asunto,
                 r.mensaje Mensaje,
@@ -115,6 +126,7 @@ public class RecordatorioRepository
             FROM recordatorios r
             INNER JOIN clientes c ON c.id = r.cliente_id
             LEFT JOIN polizas p ON p.id = r.poliza_id
+            LEFT JOIN poliza_cuotas pc ON pc.id = r.cuota_id
             WHERE r.id = @id;";
 
         return await cn.QueryFirstOrDefaultAsync<Recordatorio>(sql, new { id });
@@ -128,6 +140,7 @@ public class RecordatorioRepository
     public async Task<int> GenerarPendientesAsync(EnvioAutomaticoConfig config)
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
         var total = 0;
         var diasPoliza = ParseDias(config.DiasAntesVencimientoPoliza, 180, new[] { 30, 15, 7 });
         var diasCuotaAntes = ParseDias(config.DiasAntesVencimientoCuota, 90, new[] { 7, 3, 1 });
@@ -145,7 +158,7 @@ public class RecordatorioRepository
                 p.hasta,
                 CONCAT('Renovacion proxima - poliza ', IFNULL(p.numero_poliza, '')),
                 REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@plantillaPoliza, '{cliente}', c.nombre), '{poliza}', IFNULL(p.numero_poliza, '')), '{aseguradora}', IFNULL(p.aseguradora, '')), '{fecha_vencimiento}', DATE_FORMAT(p.hasta, '%d/%m/%Y')), '{dias}', DATEDIFF(p.hasta, CURDATE())),
-                'PENDIENTE'
+                'PENDIENTE_ENVIO'
             FROM polizas p
             INNER JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN cliente_telefonos ct ON ct.cliente_id = c.id AND ct.principal = 1 AND ct.activo = 1
@@ -166,7 +179,7 @@ public class RecordatorioRepository
                 p.hasta,
                 CONCAT('Poliza vencida - ', IFNULL(p.numero_poliza, '')),
                 REPLACE(REPLACE(REPLACE(REPLACE(@plantillaPolizaVencida, '{cliente}', c.nombre), '{poliza}', IFNULL(p.numero_poliza, '')), '{aseguradora}', IFNULL(p.aseguradora, '')), '{fecha_vencimiento}', DATE_FORMAT(p.hasta, '%d/%m/%Y')),
-                'PENDIENTE'
+                'PENDIENTE_ENVIO'
             FROM polizas p
             INNER JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN cliente_telefonos ct ON ct.cliente_id = c.id AND ct.principal = 1 AND ct.activo = 1
@@ -195,7 +208,7 @@ public class RecordatorioRepository
                     '{fecha_vencimiento}', DATE_FORMAT(pc.fecha_vencimiento, '%d/%m/%Y')),
                     '{monto}', CONCAT('L ', FORMAT(pc.monto, 2))),
                     '{dias}', ABS(DATEDIFF(pc.fecha_vencimiento, CURDATE()))),
-                'PENDIENTE'
+                'PENDIENTE_ENVIO'
             FROM poliza_cuotas pc
             INNER JOIN polizas p ON p.id = pc.poliza_id
             INNER JOIN clientes c ON c.id = p.cliente_id
@@ -233,6 +246,7 @@ public class RecordatorioRepository
     public async Task<IEnumerable<Recordatorio>> GetPendientesParaAutoEnvioAsync(int limit = 100)
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
 
         const string sql = @"
             SELECT
@@ -257,7 +271,7 @@ public class RecordatorioRepository
             FROM recordatorios r
             INNER JOIN clientes c ON c.id = r.cliente_id
             LEFT JOIN polizas p ON p.id = r.poliza_id
-            WHERE r.estado = 'PENDIENTE'
+            WHERE r.estado = 'PENDIENTE_ENVIO'
             ORDER BY r.fecha_objetivo ASC, r.id ASC
             LIMIT @limit;";
 
@@ -273,7 +287,7 @@ public class RecordatorioRepository
             SET asunto = @asunto,
                 mensaje = @mensaje
             WHERE id = @id
-              AND estado IN ('PENDIENTE', 'ERROR');";
+              AND estado IN ('PENDIENTE_ENVIO', 'ERROR_ENVIO', 'ENVIO_DESACTIVADO');";
 
         await cn.ExecuteAsync(sql, new { id, asunto, mensaje });
     }
@@ -286,7 +300,7 @@ public class RecordatorioRepository
             UPDATE recordatorios
             SET estado = 'DESCARTADO'
             WHERE id = @id
-              AND estado IN ('PENDIENTE', 'ERROR');";
+              AND estado IN ('PENDIENTE_ENVIO', 'ERROR_ENVIO', 'ENVIO_DESACTIVADO');";
 
         await cn.ExecuteAsync(sql, new { id });
     }
@@ -306,31 +320,42 @@ public class RecordatorioRepository
         {
             id,
             ok,
-            estado = ok ? "ENVIADO" : "ERROR",
+            estado = ok ? "ENVIADO" : ResolveErrorEstado(response),
             error = ok ? null : response
         });
+    }
+
+    private static string ResolveErrorEstado(string response)
+    {
+        return response.Contains("no esta habilitado", StringComparison.OrdinalIgnoreCase)
+            || response.Contains("incompleta", StringComparison.OrdinalIgnoreCase)
+            ? "ENVIO_DESACTIVADO"
+            : "ERROR_ENVIO";
     }
 
     public async Task<dynamic> GetStatsAsync()
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
 
         const string sql = @"
             SELECT
-                COALESCE(SUM(CASE WHEN estado = 'PENDIENTE' THEN 1 ELSE 0 END), 0) Pendientes,
+                COALESCE(SUM(CASE WHEN estado = 'PENDIENTE_ENVIO' THEN 1 ELSE 0 END), 0) Pendientes,
                 COALESCE(SUM(CASE WHEN estado = 'ENVIADO' THEN 1 ELSE 0 END), 0) Enviados,
-                COALESCE(SUM(CASE WHEN estado = 'ERROR' THEN 1 ELSE 0 END), 0) Errores,
+                COALESCE(SUM(CASE WHEN estado IN ('ERROR_ENVIO','ENVIO_DESACTIVADO') THEN 1 ELSE 0 END), 0) Errores,
                 COALESCE(SUM(CASE WHEN estado = 'DESCARTADO' THEN 1 ELSE 0 END), 0) Descartados
             FROM recordatorios;";
 
         return await cn.QueryFirstAsync(sql);
     }
 
-    public async Task<IEnumerable<RecordatorioTipoResumen>> GetTiposResumenAsync(string? estado = "PENDIENTE")
+    public async Task<IEnumerable<RecordatorioTipoResumen>> GetTiposResumenAsync(string? estado = "PENDIENTE_ENVIO")
     {
         using var cn = _factory.CreateConnection();
+        await NormalizeEstadosAsync(cn);
 
-        var where = string.IsNullOrWhiteSpace(estado) ? "" : "WHERE estado = @estado";
+        var estadoNormalizado = (estado ?? "").Trim().ToUpperInvariant();
+        var where = string.IsNullOrWhiteSpace(estadoNormalizado) || estadoNormalizado == "TODOS" ? "" : "WHERE estado = @estado";
         var sql = $@"
             SELECT tipo Tipo, COUNT(*) Total
             FROM recordatorios
@@ -338,6 +363,18 @@ public class RecordatorioRepository
             GROUP BY tipo
             ORDER BY tipo;";
 
-        return await cn.QueryAsync<RecordatorioTipoResumen>(sql, new { estado });
+        return await cn.QueryAsync<RecordatorioTipoResumen>(sql, new { estado = estadoNormalizado });
+    }
+
+    private static async Task NormalizeEstadosAsync(System.Data.IDbConnection cn)
+    {
+        await cn.ExecuteAsync(@"
+            UPDATE recordatorios
+            SET estado = CASE
+                WHEN estado = 'PENDIENTE' THEN 'PENDIENTE_ENVIO'
+                WHEN estado = 'ERROR' THEN 'ERROR_ENVIO'
+                ELSE estado
+            END
+            WHERE estado IN ('PENDIENTE', 'ERROR');");
     }
 }

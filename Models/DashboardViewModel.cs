@@ -25,7 +25,6 @@ public class DashboardViewModel
     public int RecordatoriosErrores { get; set; }
     public int AutomatizacionesErrores { get; set; }
     public decimal GastosMes { get; set; }
-    public int ComisionesPendientes { get; set; }
     public int DatosPendientesRevision { get; set; }
     public IEnumerable<PolizaResumenDashboard> ProximasRenovaciones { get; set; } = [];
 }

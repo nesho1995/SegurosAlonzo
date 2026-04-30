@@ -16,6 +16,7 @@ public class PolizaCuota
     public decimal MontoPagado { get; set; }
     public string Estado { get; set; } = "PENDIENTE";
     public DateTime? FechaPago { get; set; }
+    public string? MetodoPago { get; set; }
     public string? ComprobanteUrl { get; set; }
     public int? DocumentoId { get; set; }
     public string? NumeroRecibo { get; set; }

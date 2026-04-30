@@ -45,7 +45,6 @@ public class RecordatoriosApiController : ControllerBase
     public async Task<IActionResult> Generar()
     {
         var creados = await _recordatorios.GenerarPendientesAsync(await _settings.GetEnvioAutomaticoConfigAsync());
-        await _automaticWhatsApp.ProcesarRecordatoriosPendientesAsync();
         await _auditoria.RegistrarAsync("GENERAR_RECORDATORIOS", "RECORDATORIO", null, $"Recordatorios creados: {creados}.");
         return Ok(new { creados });
     }
@@ -72,6 +71,25 @@ public class RecordatoriosApiController : ControllerBase
 
         var result = await _automaticWhatsApp.EnviarRecordatorioAsync(recordatorio, automatico: false);
         return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPost("enviar-pendientes")]
+    [Authorize(Policy = Permissions.RecordatoriosEnviar)]
+    public async Task<IActionResult> EnviarPendientes()
+    {
+        var pendientes = await _recordatorios.GetPendientesParaAutoEnvioAsync(100);
+        var enviados = 0;
+        var errores = 0;
+
+        foreach (var recordatorio in pendientes)
+        {
+            var result = await _automaticWhatsApp.EnviarRecordatorioAsync(recordatorio, automatico: false);
+            if (result.ok) enviados++;
+            else errores++;
+        }
+
+        await _auditoria.RegistrarAsync("ENVIAR_RECORDATORIOS_PENDIENTES", "RECORDATORIO", null, $"Enviados={enviados}, errores={errores}.");
+        return Ok(new { enviados, errores });
     }
 
     [HttpPost("{id:int}/descartar")]

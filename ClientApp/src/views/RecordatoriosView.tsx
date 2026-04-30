@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, XCircle } from 'lucide-react'
-import { descartarRecordatorio, enviarRecordatorio, generarRecordatorios, getRecordatorios } from '../api/recordatoriosApi'
+import { descartarRecordatorio, enviarRecordatorio, enviarRecordatoriosPendientes, generarRecordatorios, getRecordatorios } from '../api/recordatoriosApi'
 import { StatusPill } from '../components/Badge'
 import { CellTitle, DataTable } from '../components/DataTable'
 import { LoadingCard } from '../components/LoadingState'
@@ -9,12 +9,12 @@ import { PanelTitle, Toolbar } from '../components/FormControls'
 import { PageHeader } from '../components/Topbar'
 import { Metric } from '../components/StatCard'
 import type { ReminderResponse } from '../types/recordatorios'
-import { compactMeta, dateFmt } from '../utils/formatters'
+import { compactMeta, dateFmt, moneySafe } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
 
 export function RemindersView() {
   const [data, setData] = useState<ReminderResponse | null>(null)
-  const [estado, setEstado] = useState('PENDIENTE')
+  const [estado, setEstado] = useState('PENDIENTE_ENVIO')
   const [buscar, setBuscar] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -25,7 +25,7 @@ export function RemindersView() {
     setLoading(true)
     setError(null)
     try {
-      const query = new URLSearchParams({ estado, pageSize: '15' })
+      const query = new URLSearchParams({ estado, pageSize: '50' })
       if (buscar.trim()) query.set('buscar', buscar.trim())
       setData(await getRecordatorios(query))
     } catch (err) {
@@ -43,7 +43,9 @@ export function RemindersView() {
       const result = await action()
       const response = result as { ok?: boolean; response?: string; creados?: number } | null
       if (typeof response?.creados === 'number') setMessage(`Recordatorios generados: ${response.creados}.`)
-      else setMessage(response?.ok === false ? response.response || 'No se pudo enviar.' : success)
+      else if ('enviados' in (response || {})) setMessage(`Recordatorios enviados: ${(response as { enviados: number }).enviados}. Errores: ${(response as { errores: number }).errores}.`)
+      else if (response?.ok === false) setError(response.response || 'No se pudo enviar.')
+      else setMessage(success)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error inesperado.')
@@ -54,7 +56,7 @@ export function RemindersView() {
 
   useEffect(() => {
     let alive = true
-    const query = new URLSearchParams({ estado, pageSize: '15' })
+    const query = new URLSearchParams({ estado, pageSize: '50' })
     if (buscar.trim()) query.set('buscar', buscar.trim())
 
     getRecordatorios(query)
@@ -83,10 +85,13 @@ export function RemindersView() {
       />
       <div className="action-row page-actions">
         <button className="primary-button" disabled={busy} onClick={() => void runAction(generarRecordatorios, 'Recordatorios generados.')}>
-          <Send size={18} />Generar pendientes
+          <Send size={18} />Generar recordatorios
+        </button>
+        <button className="icon-button secondary" disabled={busy} onClick={() => void runAction(enviarRecordatoriosPendientes, 'Recordatorios pendientes enviados.')}>
+          <Send size={18} />Enviar pendientes
         </button>
       </div>
-      <Toolbar buscar={buscar} estado={estado} estados={['PENDIENTE', 'ENVIADO', 'ERROR', 'DESCARTADO']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
+      <Toolbar buscar={buscar} estado={estado} estados={['PENDIENTE_ENVIO', 'ENVIADO', 'ERROR_ENVIO', 'ENVIO_DESACTIVADO', 'DESCARTADO', 'TODOS']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
       {loading && <LoadingCard text="Cargando recordatorios..." />}
       {error && <ErrorCard text={error} />}
       {message && <div className="inline-alert success">{message}</div>}
@@ -100,17 +105,25 @@ export function RemindersView() {
           <article className="panel">
             <PanelTitle title={`${data.total} recordatorios`} subtitle="Bandeja operativa para revisar pagos, vencimientos y renovaciones." />
             <DataTable
-              headers={['Cliente', 'Tipo', 'Poliza', 'Fecha', 'Estado']}
+              headers={['Cliente', 'Telefono', 'Poliza', 'Cuota', 'Fecha vence', 'Monto', 'Dias', 'Estado', 'Acciones']}
               rows={data.items.map((item) => [
                 <CellTitle title={item.cliente} subtitle={item.telefono || item.asunto} />,
-                item.tipo,
+                item.telefono || 'Sin telefono valido',
                 <CellTitle title={item.numeroPoliza || 'Sin poliza'} subtitle={compactMeta([item.aseguradora, item.ramo])} />,
+                item.numeroCuota ? `#${item.numeroCuota}` : item.tipo,
                 item.fechaObjetivo ? dateFmt.format(new Date(item.fechaObjetivo)) : 'Sin fecha',
+                item.monto !== undefined ? moneySafe(item.monto) : '-',
+                formatReminderDays(item.dias),
+                <StatusPill text={statusLabel(item.estado)} tone={stateTone(item.estado)} />,
                 <div className="table-actions">
-                  <StatusPill text={statusLabel(item.estado)} tone={stateTone(item.estado)} />
                   <button className="icon-button secondary" disabled={busy || item.estado === 'ENVIADO'} onClick={() => void runAction(() => enviarRecordatorio(item.id), 'Recordatorio enviado.')}>
                     <Send size={16} />Enviar
                   </button>
+                  {item.estado === 'ERROR_ENVIO' && (
+                    <button className="icon-button secondary" disabled={busy} onClick={() => void runAction(() => enviarRecordatorio(item.id), 'Recordatorio reenviado.')}>
+                      <Send size={16} />Reintentar
+                    </button>
+                  )}
                   <button className="icon-button danger-button" disabled={busy || item.estado === 'ENVIADO'} onClick={() => void runAction(() => descartarRecordatorio(item.id), 'Recordatorio descartado.')}>
                     <XCircle size={16} />Descartar
                   </button>
@@ -122,5 +135,12 @@ export function RemindersView() {
       )}
     </>
   )
+}
+
+function formatReminderDays(value?: number) {
+  if (value === undefined || value === null) return '-'
+  if (value < 0) return `${Math.abs(value)} dias vencido`
+  if (value === 0) return 'Vence hoy'
+  return `${value} dias para vencer`
 }
 
