@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench, FileSearch } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -28,6 +28,8 @@ import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 import { GastosView } from './views/GastosView'
 import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 import { GlobalSearch } from './components/GlobalSearch'
+import { CotizacionesView } from './views/CotizacionesView'
+import { CotizacionRevisionView } from './views/CotizacionRevisionView'
 
 const navItems = [
   // Inicio
@@ -36,6 +38,7 @@ const navItems = [
   { id: 'clientes',        label: 'Clientes y Cartera', icon: Users,           section: 'Cartera' },
   { id: 'pagos',           label: 'Cobros y Cuotas',   icon: CreditCard,      section: 'Cartera' },
   { id: 'gastos',          label: 'Gastos',             icon: ReceiptText,     section: 'Cartera' },
+  { id: 'cotizaciones',   label: 'Cotizaciones',       icon: FileSearch,      section: 'Cartera' },
   { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
   // Operaciones
   { id: 'reclamos',        label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
@@ -65,10 +68,12 @@ function App() {
 
 function AppRouter() {
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname))
+  const [cotizacionId, setCotizacionId] = useState<number | null>(null)
   const { user, loading, hasPermission } = useAuth()
 
   function navigate(nextView: View) {
     setView(nextView)
+    if (nextView !== 'cotizaciones') setCotizacionId(null)
     window.history.pushState(null, '', pathFromView(nextView))
   }
 
@@ -99,6 +104,7 @@ function AppRouter() {
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
     if (target === 'reclamos-config') return hasPermission('configuracion.administrar')
     if (target === 'gastos') return hasPermission('gastos.ver')
+    if (target === 'cotizaciones') return hasPermission('cotizaciones.ver')
     return true
   }
 
@@ -118,6 +124,12 @@ function AppRouter() {
       {view === 'recordatorios' && <RemindersView />}
       {view === 'pagos' && <PaymentsView />}
       {view === 'gastos' && <GastosView />}
+      {view === 'cotizaciones' && cotizacionId === null && (
+        <CotizacionesView onOpen={id => setCotizacionId(id)} />
+      )}
+      {view === 'cotizaciones' && cotizacionId !== null && (
+        <CotizacionRevisionView cotizacionId={cotizacionId} onBack={() => setCotizacionId(null)} />
+      )}
       {view === 'automatizaciones' && <AutomationView />}
       {view === 'extractor' && <ExtractorView />}
       {view === 'talleres' && <WorkshopsView />}

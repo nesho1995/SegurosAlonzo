@@ -107,6 +107,7 @@ builder.Services.AddScoped<NotificacionRepository>();
 builder.Services.AddScoped<AutomationRepository>();
 builder.Services.AddScoped<EmpresaConfiguracionRepository>();
 builder.Services.AddScoped<GastoRepository>();
+builder.Services.AddScoped<CotizacionRepository>();
 builder.Services.AddScoped<CatalogoRepository>();
 builder.Services.AddScoped<WhatsAppEnvioLogRepository>();
 builder.Services.AddScoped<ReclamoPatronesRepository>();
@@ -226,6 +227,10 @@ using (var scope = app.Services.CreateScope())
     var actualizadas = await cartera.SincronizarEstadosPolizasAsync();
     if (actualizadas > 0)
         app.Logger.LogInformation("Startup: {Count} pólizas marcadas como VENCIDA por fecha.", actualizadas);
+
+    // Inicializar schema de cotizaciones
+    var cotizaciones = scope.ServiceProvider.GetRequiredService<CotizacionRepository>();
+    await cotizaciones.EnsureSchemaAsync();
 
     // Sincronizar estado_negocio de clientes al arrancar
     var clientesActualizados = await cartera.SincronizarEstadosClientesAsync();

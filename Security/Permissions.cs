@@ -34,13 +34,19 @@ public static class Permissions
     public const string GastosEditar = "gastos.editar";
     public const string GastosEliminar = "gastos.eliminar";
 
+    public const string CotizacionesVer = "cotizaciones.ver";
+    public const string CotizacionesCrear = "cotizaciones.crear";
+    public const string CotizacionesEditar = "cotizaciones.editar";
+    public const string CotizacionesEliminar = "cotizaciones.eliminar";
+
     public static readonly string[] All =
     {
         DashboardVer, ClientesVer, ClientesEditar, ClientesCrear, PolizasVer, PolizasEditar, PolizasCrear,
         PagosVer, PagosEditar, ReclamosVer, ReclamosEditar, ReclamosEnviar, RecordatoriosVer, RecordatoriosEnviar,
         TalleresVer, TalleresEditar, DocumentosVer, DocumentosSubir, DocumentosEliminar, AuditoriaVer,
         UsuariosAdministrar, ConfiguracionAdministrar, CatalogosAdministrar, AutomatizacionesVer, AutomatizacionesCrear,
-        AutomatizacionesEditar, AutomatizacionesEliminar, GastosVer, GastosCrear, GastosEditar, GastosEliminar
+        AutomatizacionesEditar, AutomatizacionesEliminar, GastosVer, GastosCrear, GastosEditar, GastosEliminar,
+        CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar
     };
 
     private static readonly Dictionary<string, string[]> RolePermissions = new(StringComparer.OrdinalIgnoreCase)
@@ -52,18 +58,20 @@ public static class Permissions
             PagosVer, PagosEditar, ReclamosVer, ReclamosEditar, ReclamosEnviar, RecordatoriosVer, RecordatoriosEnviar,
             TalleresVer, TalleresEditar, DocumentosVer, DocumentosSubir, DocumentosEliminar, AuditoriaVer,
             AutomatizacionesVer, AutomatizacionesCrear, AutomatizacionesEditar, AutomatizacionesEliminar,
-            GastosVer, GastosCrear, GastosEditar, GastosEliminar
+            GastosVer, GastosCrear, GastosEditar, GastosEliminar,
+            CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar
         },
         ["EJECUTIVO"] = new[]
         {
             DashboardVer, ClientesVer, ClientesEditar, ClientesCrear, PolizasVer, PolizasEditar, PolizasCrear,
             PagosVer, ReclamosVer, ReclamosEditar, RecordatoriosVer, TalleresVer, DocumentosVer, DocumentosSubir,
-            AutomatizacionesVer, GastosVer, GastosCrear, GastosEditar
+            AutomatizacionesVer, GastosVer, GastosCrear, GastosEditar,
+            CotizacionesVer, CotizacionesCrear, CotizacionesEditar
         },
         ["SOLO_LECTURA"] = new[]
         {
             DashboardVer, ClientesVer, PolizasVer, PagosVer, ReclamosVer, RecordatoriosVer, TalleresVer, DocumentosVer,
-            GastosVer
+            GastosVer, CotizacionesVer
         }
     };
 
