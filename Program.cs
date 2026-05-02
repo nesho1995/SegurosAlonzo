@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.FileProviders;
 using MySqlConnector;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
 using ReclamosWhatsApp.Services.DataQuality;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<HostOptions>(options =>
@@ -16,6 +18,27 @@ builder.Services.Configure<HostOptions>(options =>
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
+
+// Rate limiting: máx 10 uploads por minuto por IP
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("upload", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 2
+            }));
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (ctx, _) =>
+    {
+        ctx.HttpContext.Response.ContentType = "application/json";
+        await ctx.HttpContext.Response.WriteAsync("{\"error\":\"Demasiadas solicitudes. Espera un momento antes de intentar de nuevo.\"}");
+    };
+});
 
 // Auth setup
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -104,7 +127,9 @@ builder.Services.AddScoped<AutomaticWhatsAppService>();
 builder.Services.AddScoped<DocumentoStorageService>();
 builder.Services.AddScoped<ReclamoPatronesService>();
 builder.Services.AddScoped<ReclamoCorreoProcessingService>();
+builder.Services.AddSingleton<PdfService>();
 builder.Services.AddHostedService<EmailProcessingWorker>();
+builder.Services.AddHostedService<StatusSyncWorker>();
 //builder.Services.AddHostedService<AlertasWorker>();
 
 var app = builder.Build();
@@ -170,6 +195,7 @@ if (spaFiles is not null)
 }
 
 app.UseStaticFiles();
+app.UseRateLimiter();
 app.UseRouting();
 
 app.Use(async (context, next) =>
@@ -185,6 +211,27 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Inicializar schema de pagos una sola vez al arranque
+using (var scope = app.Services.CreateScope())
+{
+    var pagos = scope.ServiceProvider.GetRequiredService<PagoRepository>();
+    await pagos.EnsureSchemaAsync();
+
+    // Asegurar que las columnas opcionales existan antes de sincronizar estados
+    var cartera = scope.ServiceProvider.GetRequiredService<CarteraRepository>();
+    await cartera.EnsureImportSchemaAsync();
+
+    // Sincronizar estados de pólizas vencidas al arrancar
+    var actualizadas = await cartera.SincronizarEstadosPolizasAsync();
+    if (actualizadas > 0)
+        app.Logger.LogInformation("Startup: {Count} pólizas marcadas como VENCIDA por fecha.", actualizadas);
+
+    // Sincronizar estado_negocio de clientes al arrancar
+    var clientesActualizados = await cartera.SincronizarEstadosClientesAsync();
+    if (clientesActualizados > 0)
+        app.Logger.LogInformation("Startup: {Count} clientes con estado_negocio actualizado.", clientesActualizados);
+}
 
 app.MapFallback(async context =>
 {

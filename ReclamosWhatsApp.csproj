@@ -10,5 +10,6 @@
     <PackageReference Include="Dapper" Version="2.1.66" />
     <PackageReference Include="MailKit" Version="4.16.0" />
     <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <PackageReference Include="QuestPDF" Version="2026.2.4" />
   </ItemGroup>
 </Project>

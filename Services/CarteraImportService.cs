@@ -434,11 +434,20 @@ public class CarteraImportService
         if (cell.DataType == XLDataType.DateTime)
             return cell.GetDateTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-        if (cell.DataType == XLDataType.Number && IsDateField(key))
+        if (cell.DataType == XLDataType.Number)
         {
-            var serial = cell.GetDouble();
-            if (serial > 1)
-                return DateTime.FromOADate(serial).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (IsDateField(key))
+            {
+                var serial = cell.GetDouble();
+                if (serial > 1)
+                    return DateTime.FromOADate(serial).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                // Usar valor numérico crudo para evitar que formatos moneda tipo "L"#,##0.00
+                // se rendericen mal en ClosedXML y rompan ParseMoney.
+                return cell.GetDouble().ToString(CultureInfo.InvariantCulture);
+            }
         }
 
         return cell.GetFormattedString().Trim();

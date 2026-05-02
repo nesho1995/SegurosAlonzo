@@ -27,25 +27,32 @@ import { CatalogosView } from './views/CatalogosView'
 import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 import { GastosView } from './views/GastosView'
 import { WhatsAppConfigView } from './views/WhatsAppConfigView'
+import { GlobalSearch } from './components/GlobalSearch'
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operacion' },
-  { id: 'clientes', label: 'Clientes', icon: Users, section: 'Operacion' },
-  { id: 'reclamos', label: 'Reclamos', icon: ClipboardList, section: 'Operacion' },
-  { id: 'pagos', label: 'Pagos', icon: CreditCard, section: 'Operacion' },
-  { id: 'gastos', label: 'Gastos', icon: ReceiptText, section: 'Operacion' },
-  { id: 'recordatorios', label: 'Recordatorios', icon: Send, section: 'Operacion' },
-  { id: 'configuracion', label: 'Empresa', icon: Building2, section: 'Administracion' },
-  { id: 'usuarios', label: 'Usuarios', icon: UserCog, section: 'Administracion' },
-  { id: 'whatsapp-config', label: 'WhatsApp', icon: Send, section: 'Administracion' },
-  { id: 'catalogos', label: 'Catalogos', icon: Settings, section: 'Administracion' },
-  { id: 'carga', label: 'Carga masiva', icon: Upload, section: 'Administracion' },
-  { id: 'talleres', label: 'Talleres', icon: Wrench, section: 'Administracion' },
-  { id: 'reclamos-config', label: 'Reclamos config', icon: Settings, section: 'Administracion' },
-  { id: 'envios-auto', label: 'Automatizacion envios', icon: Send, section: 'Administracion' },
-  { id: 'extractor', label: 'Configuracion', icon: Settings, section: 'Administracion' },
-  { id: 'automatizaciones', label: 'Automatizaciones', icon: Bot, section: 'Administracion' },
-  { id: 'auditoria', label: 'Auditoria', icon: FileClock, section: 'Auditoria' },
+  // Inicio
+  { id: 'dashboard',       label: 'Inicio',            icon: LayoutDashboard, section: 'Inicio' },
+  // Cartera
+  { id: 'clientes',        label: 'Clientes y Cartera', icon: Users,           section: 'Cartera' },
+  { id: 'pagos',           label: 'Cobros y Cuotas',   icon: CreditCard,      section: 'Cartera' },
+  { id: 'gastos',          label: 'Gastos',             icon: ReceiptText,     section: 'Cartera' },
+  { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
+  // Operaciones
+  { id: 'reclamos',        label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
+  { id: 'recordatorios',   label: 'Recordatorios',      icon: Send,            section: 'Operaciones' },
+  { id: 'talleres',        label: 'Talleres',           icon: Wrench,          section: 'Operaciones' },
+  // Automatizacion
+  { id: 'automatizaciones',label: 'Automatizaciones',   icon: Bot,             section: 'Automatizacion' },
+  { id: 'envios-auto',     label: 'Envios automaticos', icon: Send,            section: 'Automatizacion' },
+  // Configuracion
+  { id: 'configuracion',   label: 'Empresa',            icon: Building2,       section: 'Configuracion' },
+  { id: 'whatsapp-config', label: 'WhatsApp',           icon: Send,            section: 'Configuracion' },
+  { id: 'usuarios',        label: 'Usuarios',           icon: UserCog,         section: 'Configuracion' },
+  { id: 'catalogos',       label: 'Catalogos',          icon: Settings,        section: 'Configuracion' },
+  { id: 'reclamos-config', label: 'Config. reclamos',   icon: Settings,        section: 'Configuracion' },
+  { id: 'extractor',       label: 'Config. avanzada',   icon: Settings,        section: 'Configuracion' },
+  // Auditoria
+  { id: 'auditoria',       label: 'Auditoria',          icon: FileClock,       section: 'Auditoria' },
 ] satisfies NavItem[]
 
 function App() {
@@ -66,13 +73,16 @@ function AppRouter() {
   }
 
   useEffect(() => {
-    const onForbidden = () => setView('access-denied')
+    const onForbidden    = () => setView('access-denied')
     const onUnauthorized = () => setView('dashboard')
+    const onPopState     = () => setView(viewFromPath(window.location.pathname))
     window.addEventListener('app:forbidden', onForbidden)
     window.addEventListener('app:unauthorized', onUnauthorized)
+    window.addEventListener('popstate', onPopState)
     return () => {
       window.removeEventListener('app:forbidden', onForbidden)
       window.removeEventListener('app:unauthorized', onUnauthorized)
+      window.removeEventListener('popstate', onPopState)
     }
   }, [])
 
@@ -98,6 +108,7 @@ function AppRouter() {
 
   return (
     <Layout navItems={allowedNavItems} view={view} onViewChange={navigate}>
+      <GlobalSearch />
       {!canAccessView(view) && <AccessDeniedView />}
       {canAccessView(view) && (
         <>

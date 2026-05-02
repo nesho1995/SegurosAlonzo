@@ -4,3 +4,15 @@ export type DashboardModel = { totalClientes: number; clientesActivos: number; t
 export type WorkshopStats = { detectadosPendientes: number }
 export type DashboardFilters = { aseguradoras: string[]; ciudades: string[] }
 export type DashboardResponse = { model: DashboardModel; pagos: PaymentStats & { montoVencido: number }; talleres: WorkshopStats; filtros: DashboardFilters }
+
+// Gráficos
+export type PrimaMensual    = { mes: string; mesLabel: string; prima: number; polizas: number }
+export type DistAseguradora = { aseguradora: string; polizas: number; prima: number }
+export type DistEstado      = { estado: string; total: number }
+export type CuotaMensual    = { mes: string; mesLabel: string; pagadas: number; pendientes: number; vencidas: number; montoPagado: number; montoPendiente: number }
+export type DashboardGraficos = {
+  primaMensual:    PrimaMensual[]
+  porAseguradora:  DistAseguradora[]
+  porEstado:       DistEstado[]
+  cuotasMensuales: CuotaMensual[]
+}

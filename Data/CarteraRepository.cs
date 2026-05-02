@@ -64,6 +64,9 @@ public class CarteraRepository
             ALTER TABLE vehiculos
                 ADD COLUMN IF NOT EXISTS fecha_actualizacion DATETIME NULL;
 
+            ALTER TABLE clientes
+                ADD COLUMN IF NOT EXISTS estado_negocio VARCHAR(30) NOT NULL DEFAULT 'ACTIVO';
+
             CREATE TABLE IF NOT EXISTS vehiculos (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 cliente_id INT NOT NULL,
@@ -154,6 +157,12 @@ public class CarteraRepository
 
         var where = new List<string>();
         var parameters = new DynamicParameters();
+
+        // Excluir clientes que solo aparecen como contratante/financiera (ej. PRESTADITO)
+        where.Add(@"NOT (
+            NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id)
+            AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id)
+        )");
 
         if (!string.IsNullOrWhiteSpace(buscar))
         {
@@ -276,12 +285,13 @@ public class CarteraRepository
                 c.estado_revision EstadoRevision,
                 c.motivo_revision MotivoRevision,
                 c.fecha_creacion FechaCreacion,
+                COALESCE(c.estado_negocio, 'ACTIVO') EstadoNegocio,
                 COUNT(p.id) Polizas,
                 COALESCE(SUM(CASE WHEN p.activo = 1 THEN 1 ELSE 0 END), 0) PolizasActivas
             FROM clientes c
             LEFT JOIN polizas p ON p.cliente_id = c.id
             {whereSql}
-            GROUP BY c.id, c.nombre, c.telefono, c.telefono_secundario, c.telefonos_extra_json, c.contacto, c.email, c.correos_extra_json, c.ciudad, c.activo, c.requiere_revision_manual, c.estado_revision, c.motivo_revision, c.fecha_creacion
+            GROUP BY c.id, c.nombre, c.telefono, c.telefono_secundario, c.telefonos_extra_json, c.contacto, c.email, c.correos_extra_json, c.ciudad, c.activo, c.requiere_revision_manual, c.estado_revision, c.motivo_revision, c.fecha_creacion, c.estado_negocio
             ORDER BY c.nombre
             LIMIT @pageSize OFFSET @offset;";
 
@@ -844,18 +854,26 @@ public class CarteraRepository
 
         var polizaWhere = BuildDashboardWhere("p", aseguradora, ciudad, desde, hasta, out var parameters);
 
+        // Pólizas compartidas: misma numero_poliza para varios clientes debe contarse UNA sola vez.
+        // Agrupa por IFNULL(NULLIF(numero_poliza,''), id) y toma MIN(id) como representante.
+        string Dedup(string extraWhere = "")
+        {
+            var w = string.IsNullOrEmpty(extraWhere) ? polizaWhere : AppendWhere(polizaWhere, extraWhere);
+            return $"SELECT MIN(p.id) id FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {w} GROUP BY IFNULL(NULLIF(p.numero_poliza,''), p.id)";
+        }
+
         var sql = $@"
             SELECT
-                (SELECT COUNT(*) FROM clientes) TotalClientes,
-                (SELECT COUNT(*) FROM clientes c WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)) ClientesActivos,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {polizaWhere}) TotalPolizas,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1")}) PolizasActivas,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")}) PolizasPorVencer30,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)")}) PolizasPorVencer15,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)")}) PolizasPorVencer7,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta < CURDATE()")}) PolizasVencidas,
-                (SELECT COUNT(*) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.estado_pago IN ('SIN_VALIDAR','PENDIENTE','MORA')")}) PagosPendientes,
-                (SELECT COALESCE(SUM(p.prima_total), 0) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1")}) PrimaTotalActiva;";
+                (SELECT COUNT(*) FROM clientes c WHERE NOT (NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id) AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id))) TotalClientes,
+                (SELECT COUNT(*) FROM clientes c WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike) AND NOT (NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id) AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id))) ClientesActivos,
+                (SELECT COUNT(*) FROM ({Dedup()}) unicas) TotalPolizas,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1")}) unicas) PolizasActivas,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")}) unicas) PolizasPorVencer30,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)")}) unicas) PolizasPorVencer15,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)")}) unicas) PolizasPorVencer7,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta < CURDATE()")}) unicas) PolizasVencidas,
+                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.estado_pago IN ('SIN_VALIDAR','PENDIENTE','MORA')")}) unicas) PagosPendientes,
+                (SELECT COALESCE(SUM(px.prima_total), 0) FROM polizas px WHERE px.id IN ({Dedup("p.activo = 1")})) PrimaTotalActiva;";
 
         return await cn.QueryFirstAsync(sql, parameters);
     }
@@ -864,18 +882,19 @@ public class CarteraRepository
     {
         using var cn = _factory.CreateConnection();
 
+        // GROUP BY numero_poliza para evitar duplicar pólizas compartidas entre varios clientes
         const string sql = @"
             SELECT
-                p.id Id,
-                p.cliente_id ClienteId,
-                c.nombre Cliente,
-                p.aseguradora Aseguradora,
+                MIN(p.id) Id,
+                MIN(p.cliente_id) ClienteId,
+                MIN(c.nombre) Cliente,
+                MIN(p.aseguradora) Aseguradora,
                 p.numero_poliza NumeroPoliza,
-                p.ramo Ramo,
-                p.hasta Hasta,
-                p.prima_total PrimaTotal,
-                DATEDIFF(p.hasta, CURDATE()) DiasRestantes,
-                p.estado_pago EstadoPago
+                MIN(p.ramo) Ramo,
+                MIN(p.hasta) Hasta,
+                MIN(p.prima_total) PrimaTotal,
+                DATEDIFF(MIN(p.hasta), CURDATE()) DiasRestantes,
+                MIN(p.estado_pago) EstadoPago
             FROM polizas p
             INNER JOIN clientes c ON c.id = p.cliente_id
             WHERE p.activo = 1
@@ -883,7 +902,8 @@ public class CarteraRepository
               AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL @dias DAY)
               AND (@aseguradora IS NULL OR p.aseguradora LIKE @aseguradoraLike)
               AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)
-            ORDER BY p.hasta ASC
+            GROUP BY IFNULL(NULLIF(p.numero_poliza,''), p.id)
+            ORDER BY MIN(p.hasta) ASC
             LIMIT @limit;";
 
         return await cn.QueryAsync<PolizaResumenDashboard>(sql, new
@@ -1364,5 +1384,334 @@ public class CarteraRepository
             SET estado_pago = @estado,
                 origen_estado_pago = COALESCE(origen_estado_pago, 'REGLA_AUTOMATICA')
             WHERE id = @polizaId;", new { polizaId, estado }, tx);
+    }
+
+    // ── Chart data ──────────────────────────────────────────────────────────
+
+    public async Task<IEnumerable<dynamic>> GetPrimaMensualAsync(int meses = 12)
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryAsync(@"
+            SELECT
+                DATE_FORMAT(p.vigencia, '%Y-%m') AS mes,
+                DATE_FORMAT(p.vigencia, '%b %Y') AS mesLabel,
+                CAST(SUM(p.prima_total) AS DECIMAL(18,2)) AS prima,
+                COUNT(DISTINCT IFNULL(NULLIF(p.numero_poliza,''), p.id)) AS polizas
+            FROM polizas p
+            WHERE p.activo = 1
+              AND p.vigencia >= DATE_SUB(CURDATE(), INTERVAL @meses MONTH)
+            GROUP BY DATE_FORMAT(p.vigencia, '%Y-%m'), DATE_FORMAT(p.vigencia, '%b %Y')
+            ORDER BY mes ASC;", new { meses });
+    }
+
+    public async Task<IEnumerable<dynamic>> GetDistribucionAseguradorasAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryAsync(@"
+            SELECT
+                IFNULL(NULLIF(TRIM(aseguradora),''), 'Sin aseguradora') AS aseguradora,
+                COUNT(DISTINCT IFNULL(NULLIF(numero_poliza,''), id)) AS polizas,
+                CAST(SUM(prima_total) AS DECIMAL(18,2)) AS prima
+            FROM polizas
+            WHERE activo = 1
+            GROUP BY IFNULL(NULLIF(TRIM(aseguradora),''), 'Sin aseguradora')
+            ORDER BY prima DESC
+            LIMIT 10;");
+    }
+
+    public async Task<IEnumerable<dynamic>> GetDistribucionEstadosAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryAsync(@"
+            SELECT
+                CASE
+                    WHEN hasta < CURDATE()                                         THEN 'Vencida'
+                    WHEN hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)  THEN 'Vence 7 días'
+                    WHEN hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 'Vence 30 días'
+                    WHEN estado_pago IN ('MORA','VENCIDA')                         THEN 'En mora'
+                    ELSE 'Activa'
+                END AS estado,
+                COUNT(DISTINCT IFNULL(NULLIF(numero_poliza,''), id)) AS total
+            FROM polizas
+            WHERE activo = 1
+            GROUP BY 1
+            ORDER BY total DESC;");
+    }
+
+    public async Task<IEnumerable<dynamic>> GetCuotasMensualesAsync(int meses = 6)
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryAsync(@"
+            SELECT
+                DATE_FORMAT(pc.fecha_vencimiento, '%Y-%m') AS mes,
+                DATE_FORMAT(pc.fecha_vencimiento, '%b %Y') AS mesLabel,
+                SUM(CASE WHEN pc.estado = 'PAGADA'   THEN 1 ELSE 0 END) AS pagadas,
+                SUM(CASE WHEN pc.estado = 'PENDIENTE' THEN 1 ELSE 0 END) AS pendientes,
+                SUM(CASE WHEN pc.estado = 'VENCIDA'  THEN 1 ELSE 0 END) AS vencidas,
+                CAST(SUM(CASE WHEN pc.estado = 'PAGADA'  THEN pc.monto ELSE 0 END) AS DECIMAL(18,2)) AS montoPagado,
+                CAST(SUM(CASE WHEN pc.estado != 'PAGADA' THEN pc.monto ELSE 0 END) AS DECIMAL(18,2)) AS montoPendiente
+            FROM poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id AND p.activo = 1
+            WHERE pc.fecha_vencimiento >= DATE_SUB(CURDATE(), INTERVAL @meses MONTH)
+              AND pc.fecha_vencimiento <= DATE_ADD(CURDATE(), INTERVAL 3 MONTH)
+            GROUP BY DATE_FORMAT(pc.fecha_vencimiento, '%Y-%m'), DATE_FORMAT(pc.fecha_vencimiento, '%b %Y')
+            ORDER BY mes ASC;", new { meses });
+    }
+
+    public async Task<IEnumerable<dynamic>> GetPolizasParaPdfAsync(
+        string? aseguradora = null, string? ciudad = null,
+        DateTime? vigenciaDesde = null, DateTime? vigenciaHasta = null,
+        bool soloActivas = true)
+    {
+        using var cn = _factory.CreateConnection();
+        var where = new List<string>();
+        var p = new Dapper.DynamicParameters();
+
+        if (soloActivas) where.Add("p.activo = 1");
+        if (!string.IsNullOrWhiteSpace(aseguradora)) { where.Add("p.aseguradora = @aseg"); p.Add("aseg", aseguradora); }
+        if (!string.IsNullOrWhiteSpace(ciudad))      { where.Add("c.ciudad = @ciudad");   p.Add("ciudad", ciudad); }
+        if (vigenciaDesde.HasValue)                   { where.Add("p.vigencia >= @vd");    p.Add("vd", vigenciaDesde); }
+        if (vigenciaHasta.HasValue)                   { where.Add("p.vigencia <= @vh");    p.Add("vh", vigenciaHasta); }
+
+        var wClause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+        return await cn.QueryAsync($@"
+            SELECT c.nombre clienteNombre, p.numero_poliza numeroPoliza,
+                   p.aseguradora, p.ramo, p.vigencia, p.hasta,
+                   COALESCE(p.prima_total, 0) primaTotal, p.estado_poliza_real estadoPolizaReal
+            FROM polizas p
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            {wClause}
+            ORDER BY c.nombre, p.hasta;", p);
+    }
+
+    // ── Global search ────────────────────────────────────────────────────────
+
+    public async Task<dynamic> BuscarAsync(string q, int limit = 10)
+    {
+        using var cn = _factory.CreateConnection();
+        var like = $"%{q}%";
+        var p = new { like, limit };
+
+        var clientes = await cn.QueryAsync(@"
+            SELECT id, nombre, telefono, 'cliente' AS tipo,
+                   (SELECT COUNT(*) FROM polizas px WHERE px.cliente_id = c.id AND px.activo = 1) AS polizasActivas
+            FROM clientes c
+            WHERE activo = 1
+              AND (nombre LIKE @like OR telefono LIKE @like OR email LIKE @like OR cedula LIKE @like)
+            ORDER BY nombre LIMIT @limit;", p);
+
+        var polizas = await cn.QueryAsync(@"
+            SELECT p.id, p.numero_poliza AS codigo, c.nombre AS cliente,
+                   p.aseguradora, p.hasta, 'poliza' AS tipo,
+                   p.activo, p.estado_poliza_real AS estado
+            FROM polizas p
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            WHERE (p.numero_poliza LIKE @like OR c.nombre LIKE @like OR p.aseguradora LIKE @like
+                   OR p.certificado LIKE @like OR p.placa LIKE @like OR p.vehiculo LIKE @like)
+            ORDER BY p.activo DESC, p.hasta DESC
+            LIMIT @limit;", p);
+
+        return new { clientes, polizas };
+    }
+
+    /// <summary>
+    /// Recalcula estado_negocio de todos los clientes en función de sus pólizas vigentes.
+    /// PROSPECTO: sin pólizas · EN_RIESGO: pólizas pero ninguna vigente · ACTIVO: tiene al menos 1 vigente · INACTIVO: activo=0.
+    /// </summary>
+    public async Task<int> SincronizarEstadosClientesAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.ExecuteAsync(@"
+            UPDATE clientes c
+            SET estado_negocio = CASE
+                WHEN c.activo = 0
+                    THEN 'INACTIVO'
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM polizas p WHERE p.cliente_id = c.id
+                )
+                    THEN 'PROSPECTO'
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM polizas p
+                    WHERE p.cliente_id = c.id
+                      AND p.activo = 1
+                      AND (p.hasta IS NULL OR p.hasta >= CURDATE())
+                )
+                    THEN 'EN_RIESGO'
+                ELSE 'ACTIVO'
+            END
+            WHERE estado_negocio <> CASE
+                WHEN c.activo = 0
+                    THEN 'INACTIVO'
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM polizas p WHERE p.cliente_id = c.id
+                )
+                    THEN 'PROSPECTO'
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM polizas p
+                    WHERE p.cliente_id = c.id
+                      AND p.activo = 1
+                      AND (p.hasta IS NULL OR p.hasta >= CURDATE())
+                )
+                    THEN 'EN_RIESGO'
+                ELSE 'ACTIVO'
+            END;");
+    }
+
+    /// <summary>
+    /// Devuelve todos los clientes (sin paginación) con sus pólizas agregadas, para exportar a Excel.
+    /// Acepta los mismos filtros que GetClientesListadoAsync pero sin paginación.
+    /// </summary>
+    public async Task<IEnumerable<ClienteListado>> GetClientesParaExcelAsync(
+        string? buscar = null,
+        string? estado = null,
+        string? financiera = null,
+        string? aseguradora = null,
+        string? ramo = null,
+        string? estadoPago = null,
+        string? ciudad = null)
+    {
+        await EnsureImportSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        var where = new List<string>();
+        var parameters = new DynamicParameters();
+
+        where.Add(@"NOT (
+            NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id)
+            AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id)
+        )");
+
+        if (!string.IsNullOrWhiteSpace(buscar))
+        {
+            where.Add(@"(c.nombre LIKE @buscar OR c.telefono LIKE @buscar OR c.email LIKE @buscar
+                OR EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id
+                    AND (px.numero_poliza LIKE @buscar OR px.aseguradora LIKE @buscar OR px.ramo LIKE @buscar)))");
+            parameters.Add("buscar", $"%{buscar.Trim()}%");
+        }
+        if (!string.IsNullOrWhiteSpace(financiera))
+        {
+            where.Add(@"EXISTS (SELECT 1 FROM polizas pf LEFT JOIN clientes cf ON cf.id = pf.cliente_contratante_id
+                WHERE pf.cliente_id = c.id AND (cf.nombre LIKE @financiera OR pf.observaciones LIKE @financiera))");
+            parameters.Add("financiera", $"%{financiera.Trim()}%");
+        }
+        if (!string.IsNullOrWhiteSpace(aseguradora))
+        {
+            where.Add("EXISTS (SELECT 1 FROM polizas pa WHERE pa.cliente_id = c.id AND pa.aseguradora LIKE @aseguradora)");
+            parameters.Add("aseguradora", $"%{aseguradora.Trim()}%");
+        }
+        if (!string.IsNullOrWhiteSpace(ramo))
+        {
+            where.Add("EXISTS (SELECT 1 FROM polizas pr WHERE pr.cliente_id = c.id AND (pr.ramo LIKE @ramo OR pr.ramo_normalizado LIKE @ramo))");
+            parameters.Add("ramo", $"%{ramo.Trim()}%");
+        }
+        if (!string.IsNullOrWhiteSpace(estadoPago))
+        {
+            where.Add("EXISTS (SELECT 1 FROM polizas pp WHERE pp.cliente_id = c.id AND pp.estado_pago = @estadoPago)");
+            parameters.Add("estadoPago", estadoPago.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(ciudad))
+        {
+            where.Add("c.ciudad LIKE @ciudad");
+            parameters.Add("ciudad", $"%{ciudad.Trim()}%");
+        }
+        if (estado == "ACTIVO")       where.Add("c.activo = 1");
+        else if (estado == "INACTIVO") where.Add("c.activo = 0");
+
+        var whereSql = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+
+        var sql = $@"
+            SELECT
+                c.id Id, c.nombre Nombre, c.telefono Telefono, c.email Email, c.ciudad Ciudad,
+                c.activo Activo, c.estado_revision EstadoRevision, c.motivo_revision MotivoRevision,
+                c.requiere_revision_manual RequiereRevisionManual, c.fecha_creacion FechaCreacion,
+                COALESCE(c.estado_negocio,'ACTIVO') EstadoNegocio,
+                COUNT(p.id) Polizas,
+                COALESCE(SUM(CASE WHEN p.activo = 1 THEN 1 ELSE 0 END), 0) PolizasActivas
+            FROM clientes c
+            LEFT JOIN polizas p ON p.cliente_id = c.id
+            {whereSql}
+            GROUP BY c.id, c.nombre, c.telefono, c.email, c.ciudad, c.activo,
+                     c.estado_revision, c.motivo_revision, c.requiere_revision_manual,
+                     c.fecha_creacion, c.estado_negocio
+            ORDER BY c.nombre
+            LIMIT 5000;";
+
+        return await cn.QueryAsync<ClienteListado>(sql, parameters);
+    }
+
+    /// <summary>
+    /// Devuelve las tareas operativas urgentes para el panel "Tareas de hoy":
+    /// pólizas que vencen en 2 días, cuotas vencidas sin pagar y reclamos con documentos pendientes.
+    /// </summary>
+    public async Task<dynamic> GetTareasHoyAsync()
+    {
+        using var cn = _factory.CreateConnection();
+
+        var polizasVencen = await cn.QueryAsync(@"
+            SELECT p.id id, c.nombre cliente, c.telefono telefono,
+                   p.numero_poliza numeroPoliza, p.aseguradora aseguradora, p.ramo ramo,
+                   p.hasta hasta, DATEDIFF(p.hasta, CURDATE()) diasRestantes
+            FROM polizas p
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            WHERE p.activo = 1
+              AND p.hasta IS NOT NULL
+              AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY)
+            ORDER BY p.hasta
+            LIMIT 20;");
+
+        var cuotasVencidas = await cn.QueryAsync(@"
+            SELECT pc.id id, c.nombre cliente, c.telefono telefono,
+                   p.numero_poliza numeroPoliza, p.aseguradora aseguradora,
+                   pc.numero_cuota numeroCuota, pc.fecha_vencimiento fechaVencimiento,
+                   pc.monto monto, DATEDIFF(CURDATE(), pc.fecha_vencimiento) diasVencida
+            FROM poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id
+            INNER JOIN clientes c ON c.id = p.cliente_id
+            WHERE pc.estado = 'VENCIDA'
+              AND p.activo = 1
+            ORDER BY pc.fecha_vencimiento
+            LIMIT 20;");
+
+        var reclamosPendientes = await cn.QueryAsync(@"
+            SELECT r.id id,
+                   COALESCE(c.nombre, r.asegurado) cliente,
+                   r.aseguradora aseguradora, r.asegurado asegurado,
+                   r.estado estado, r.fecha_creacion fechaCreacion
+            FROM reclamos_whatsapp r
+            LEFT JOIN clientes c ON c.id = r.cliente_id
+            WHERE r.estado = 'DOCUMENTOS_PENDIENTES'
+            ORDER BY r.fecha_creacion
+            LIMIT 20;");
+
+        return new { polizasVencen, cuotasVencidas, reclamosPendientes };
+    }
+
+    /// <summary>
+    /// Recalcula estado_poliza_real para todas las pólizas activas basándose en fecha real.
+    /// Transiciones automáticas: ACTIVA → VENCIDA cuando hasta &lt; hoy.
+    /// Solo actualiza pólizas donde el estado calculado difiere del almacenado.
+    /// </summary>
+    public async Task<int> SincronizarEstadosPolizasAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.ExecuteAsync(@"
+            UPDATE polizas
+            SET estado_poliza_real = CASE
+                    WHEN activo = 0                                                         THEN estado_poliza_real  -- no tocar manuales cancelados
+                    WHEN hasta < CURDATE()
+                         AND estado_poliza_real NOT IN ('CANCELADA','NO_RENOVADA',
+                                                        'PENDIENTE_CANCELACION','VENCIDA')  THEN 'VENCIDA'
+                    ELSE estado_poliza_real
+                END,
+                fecha_actualizacion = CASE
+                    WHEN activo = 1
+                         AND hasta < CURDATE()
+                         AND estado_poliza_real NOT IN ('CANCELADA','NO_RENOVADA',
+                                                        'PENDIENTE_CANCELACION','VENCIDA')  THEN NOW()
+                    ELSE fecha_actualizacion
+                END
+            WHERE activo = 1
+              AND hasta < CURDATE()
+              AND estado_poliza_real NOT IN ('CANCELADA','NO_RENOVADA','PENDIENTE_CANCELACION','VENCIDA');");
     }
 }
