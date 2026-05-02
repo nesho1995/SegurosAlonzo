@@ -236,28 +236,27 @@ public class CotizacionApiController : ControllerBase
         }
 
         // Data rows
-        var fields = new[]
-        {
-            ("Prima anual",     (CotizacionItem i) => (object?)(i.PrimaAnual.HasValue ? $"L {i.PrimaAnual:N2}" : "—")),
-            ("Prima mensual",   (CotizacionItem i) => (object?)(i.PrimaMensual.HasValue ? $"L {i.PrimaMensual:N2}" : "—")),
-            ("Frecuencia",      (CotizacionItem i) => (object?)i.FrecuenciaPago),
-            ("Suma asegurada",  (CotizacionItem i) => (object?)(i.SumaAsegurada.HasValue ? $"L {i.SumaAsegurada:N2}" : "—")),
-            ("Deducible",       (CotizacionItem i) => (object?)(i.Deducible.HasValue ? $"L {i.Deducible:N2}" : "—")),
-            ("Vigencia (meses)",(CotizacionItem i) => (object?)(i.VigenciaMeses?.ToString() ?? "—")),
-            ("Ranking (pts)",   (CotizacionItem i) => (object?)(i.RankingPuntos.HasValue ? $"{i.RankingPuntos:N1}" : "—")),
-            ("Posición",        (CotizacionItem i) => (object?)(i.RankingPosicion.HasValue ? $"#{i.RankingPosicion}" : "—")),
-        };
+        (string Label, Func<CotizacionItem, string?> Fn)[] fields =
+        [
+            ("Prima anual",      i => i.PrimaAnual.HasValue    ? $"L {i.PrimaAnual:N2}"    : "—"),
+            ("Prima mensual",    i => i.PrimaMensual.HasValue  ? $"L {i.PrimaMensual:N2}"  : "—"),
+            ("Frecuencia",       i => i.FrecuenciaPago),
+            ("Suma asegurada",   i => i.SumaAsegurada.HasValue ? $"L {i.SumaAsegurada:N2}" : "—"),
+            ("Deducible",        i => i.Deducible.HasValue     ? $"L {i.Deducible:N2}"     : "—"),
+            ("Vigencia (meses)", i => i.VigenciaMeses?.ToString() ?? "—"),
+            ("Ranking (pts)",    i => i.RankingPuntos.HasValue ? $"{i.RankingPuntos:N1}"   : "—"),
+            ("Posición",         i => i.RankingPosicion.HasValue ? $"#{i.RankingPosicion}" : "—"),
+        ];
 
         for (var r = 0; r < fields.Length; r++)
         {
-            var row = ws.Row(r + 2);
-            ws.Cell(r + 2, 1).Value = fields[r].Item1;
+            ws.Cell(r + 2, 1).Value = fields[r].Label;
             ws.Cell(r + 2, 1).Style.Font.Bold = true;
             ws.Cell(r + 2, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#f0f9f7");
 
             for (var c = 0; c < items.Count; c++)
             {
-                ws.Cell(r + 2, c + 2).Value = fields[r].Item2(items[c])?.ToString() ?? "—";
+                ws.Cell(r + 2, c + 2).Value = fields[r].Fn(items[c]) ?? "—";
             }
         }
 
