@@ -18,6 +18,8 @@ public class ClienteListado
     public int Polizas { get; set; }
     public int PolizasActivas { get; set; }
     public DateTime FechaCreacion { get; set; }
+    /// <summary>ACTIVO | EN_RIESGO | PROSPECTO | INACTIVO — calculado desde sus pólizas.</summary>
+    public string EstadoNegocio { get; set; } = "ACTIVO";
 }
 
 public class ClienteDetalle

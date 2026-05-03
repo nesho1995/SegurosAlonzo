@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Globalization;
@@ -366,6 +367,139 @@ public class CarteraApiController : ControllerBase
 
         policy.ClienteContratanteId = await _cartera.GetOrCreateClienteAsync(contractorName);
         policy.ClienteContratanteNombre = contractorName;
+    }
+
+    // ── Excel exports ────────────────────────────────────────────────────
+
+    [HttpGet("excel/clientes")]
+    [Authorize(Policy = Permissions.ClientesVer)]
+    public async Task<IActionResult> ExportarClientesExcel(
+        string? buscar = null,
+        string? estado = null,
+        string? financiera = null,
+        string? aseguradora = null,
+        string? ramo = null,
+        string? estadoPago = null,
+        string? ciudad = null)
+    {
+        var clientes = await _cartera.GetClientesParaExcelAsync(buscar, estado, financiera, aseguradora, ramo, estadoPago, ciudad);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Clientes");
+
+        // Encabezados
+        var headers = new[] { "ID", "Nombre", "Teléfono", "Email", "Ciudad", "Activo", "Estado Negocio", "Estado Revisión", "Pólizas", "Pólizas Activas", "Fecha Creación" };
+        for (var i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1A3A5C");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        // Datos
+        var row = 2;
+        foreach (var c in clientes)
+        {
+            ws.Cell(row, 1).Value  = c.Id;
+            ws.Cell(row, 2).Value  = c.Nombre;
+            ws.Cell(row, 3).Value  = c.Telefono ?? "";
+            ws.Cell(row, 4).Value  = c.Email ?? "";
+            ws.Cell(row, 5).Value  = c.Ciudad ?? "";
+            ws.Cell(row, 6).Value  = c.Activo ? "Sí" : "No";
+            ws.Cell(row, 7).Value  = c.EstadoNegocio;
+            ws.Cell(row, 8).Value  = c.EstadoRevision;
+            ws.Cell(row, 9).Value  = c.Polizas;
+            ws.Cell(row, 10).Value = c.PolizasActivas;
+            ws.Cell(row, 11).Value = c.FechaCreacion.ToString("dd/MM/yyyy");
+
+            // Color por estado negocio
+            var color = c.EstadoNegocio switch
+            {
+                "EN_RIESGO"  => XLColor.FromHtml("#FFF3CD"),
+                "PROSPECTO"  => XLColor.FromHtml("#D1ECF1"),
+                "INACTIVO"   => XLColor.FromHtml("#F8D7DA"),
+                _             => XLColor.White
+            };
+            if (color != XLColor.White)
+                ws.Row(row).Style.Fill.BackgroundColor = color;
+
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(1);
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var filename = $"clientes_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+        return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+    }
+
+    // ── PDF exports ──────────────────────────────────────────────────────
+
+    [HttpGet("pdf/cartera")]
+    [Authorize(Policy = Permissions.PolizasVer)]
+    public async Task<IActionResult> ExportarCarteraPdf(
+        [FromServices] PdfService pdf,
+        string? aseguradora = null, string? ciudad = null,
+        DateTime? desde = null, DateTime? hasta = null)
+    {
+        var rows = await _cartera.GetPolizasParaPdfAsync(aseguradora, ciudad, desde, hasta, soloActivas: true);
+
+        var filas = rows.Select(r => new PolizaPdfRow(
+            (string?)r.clienteNombre, (string?)r.numeroPoliza, (string?)r.aseguradora,
+            (string?)r.ramo, (DateTime?)r.vigencia, (DateTime?)r.hasta,
+            (decimal)(r.primaTotal ?? 0m), (string?)r.estadoPolizaReal)).ToList();
+
+        var filtro = new List<string>();
+        if (!string.IsNullOrWhiteSpace(aseguradora)) filtro.Add($"Aseguradora: {aseguradora}");
+        if (!string.IsNullOrWhiteSpace(ciudad))      filtro.Add($"Ciudad: {ciudad}");
+        if (desde.HasValue)                           filtro.Add($"Desde: {desde:dd/MM/yyyy}");
+        if (hasta.HasValue)                           filtro.Add($"Hasta: {hasta:dd/MM/yyyy}");
+
+        var bytes = pdf.GenerarReporteCartera(
+            titulo: "Reporte de Cartera",
+            filas: filas,
+            filtro: filtro.Count > 0 ? string.Join("  |  ", filtro) : null);
+
+        return File(bytes, "application/pdf", $"cartera_{DateTime.Now:yyyyMMdd}.pdf");
+    }
+
+    [HttpGet("{polizaId:int}/pdf")]
+    [Authorize(Policy = Permissions.PolizasVer)]
+    public async Task<IActionResult> ExportarResumenPolizaPdf(int polizaId, [FromServices] PdfService pdf)
+    {
+        var poliza = await _cartera.GetPolizaByIdAsync(polizaId);
+        if (poliza is null) return NotFound(new { error = "Póliza no encontrada." });
+
+        var cliente  = await _cartera.GetClienteByIdAsync(poliza.ClienteId);
+        var cuotas   = await _cartera.GetCuotasByPolizaAsync(polizaId);
+
+        var datos = new PolizaResumenPdf
+        {
+            ClienteNombre   = cliente?.Nombre,
+            ClienteTelefono = cliente?.Telefono,
+            ClienteEmail    = cliente?.Email,
+            NumeroPoliza    = poliza.NumeroPoliza,
+            Aseguradora     = poliza.Aseguradora,
+            Ramo            = poliza.Ramo,
+            Vigencia        = poliza.Vigencia,
+            Hasta           = poliza.Hasta,
+            PrimaTotal      = poliza.PrimaTotal ?? 0m,
+            FormaPago       = poliza.FormaPago,
+            Estado          = poliza.EstadoPolizaReal,
+            Vehiculo        = poliza.Vehiculo,
+            Placa           = poliza.Placa,
+            Cuotas          = cuotas.Select(c => new CuotaPdf(c.NumeroCuota, c.FechaVencimiento, c.Monto, c.Estado)).ToList()
+        };
+
+        var bytes    = pdf.GenerarResumenPoliza(datos);
+        var filename = $"poliza_{poliza.NumeroPoliza ?? polizaId.ToString()}_{DateTime.Now:yyyyMMdd}.pdf";
+        return File(bytes, "application/pdf", filename);
     }
 }
 

@@ -14,7 +14,6 @@ public class PagoRepository
 
     public async Task<int> GenerarCuotasAsync()
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         const string polizasSql = @"
@@ -35,12 +34,6 @@ public class PagoRepository
         var polizas = await cn.QueryAsync<Poliza>(polizasSql);
         var creadas = 0;
 
-        const string insertSql = @"
-            INSERT IGNORE INTO poliza_cuotas
-            (poliza_id, numero_cuota, fecha_vencimiento, monto, estado)
-            VALUES
-            (@PolizaId, @NumeroCuota, @FechaVencimiento, @Monto, 'PENDIENTE');";
-
         foreach (var poliza in polizas)
         {
             var cantidad = Math.Min(poliza.Cuotas ?? 0, 12);
@@ -50,21 +43,22 @@ public class PagoRepository
             var monto = Math.Round(poliza.PrimaTotal.Value / cantidad, 2, MidpointRounding.AwayFromZero);
             var primeraFecha = CalcularPrimeraFecha(poliza);
 
+            var valores = new List<string>();
+            var parameters = new DynamicParameters();
             for (var i = 1; i <= cantidad; i++)
             {
                 var montoCuota = i == cantidad
                     ? Math.Round(poliza.PrimaTotal.Value - (monto * (cantidad - 1)), 2, MidpointRounding.AwayFromZero)
                     : monto;
-                var affected = await cn.ExecuteAsync(insertSql, new
-                {
-                    PolizaId = poliza.Id,
-                    NumeroCuota = i,
-                    FechaVencimiento = primeraFecha.AddMonths(i - 1),
-                    Monto = montoCuota
-                });
-
-                creadas += affected;
+                var pFecha = $"fecha_{i}";
+                var pMonto = $"monto_{i}";
+                valores.Add($"({poliza.Id}, {i}, @{pFecha}, @{pMonto}, 'PENDIENTE')");
+                parameters.Add(pFecha, primeraFecha.AddMonths(i - 1));
+                parameters.Add(pMonto, montoCuota);
             }
+
+            var batchSql = $"INSERT IGNORE INTO poliza_cuotas (poliza_id, numero_cuota, fecha_vencimiento, monto, estado) VALUES {string.Join(",", valores)};";
+            creadas += await cn.ExecuteAsync(batchSql, parameters);
         }
 
         return creadas;
@@ -72,13 +66,14 @@ public class PagoRepository
 
     public async Task<(IEnumerable<PolizaCuota> items, int total)> GetCuotasAsync(string? estado = "PENDIENTE", string? buscar = null, int pagina = 1, int pageSize = 25)
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         var where = new List<string>();
         var parameters = new DynamicParameters();
         pagina = pagina < 1 ? 1 : pagina;
         pageSize = pageSize is < 10 or > 100 ? 25 : pageSize;
+
+        where.Add("p.activo = 1");
 
         var estadoNormalizado = (estado ?? "").Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(estadoNormalizado) && estadoNormalizado != "TODOS")
@@ -159,11 +154,11 @@ public class PagoRepository
 
     public async Task ActualizarEstadosVencidosAsync()
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         const string sql = @"
             UPDATE poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id AND p.activo = 1
             LEFT JOIN (
                 SELECT cuota_id, COALESCE(SUM(monto),0) monto_pagado
                 FROM poliza_pagos
@@ -202,7 +197,6 @@ public class PagoRepository
 
     public async Task<IEnumerable<object>> GetPolizasSinCuotasAsync()
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         const string sql = @"
@@ -226,7 +220,6 @@ public class PagoRepository
 
     public async Task MarcarPagadaAsync(int id, DateTime fechaPago, string? observaciones)
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         const string sql = @"
@@ -241,7 +234,6 @@ public class PagoRepository
 
     public async Task<dynamic> GetStatsAsync(string? aseguradora = null, string? ciudad = null, DateTime? desde = null, DateTime? hasta = null)
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
 
         var where = new List<string>();
@@ -267,15 +259,16 @@ public class PagoRepository
             parameters.Add("hasta", hasta.Value.Date);
         }
 
-        var whereSql = where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
+        where.Add("p.activo = 1");
+        var whereSql = "WHERE " + string.Join(" AND ", where);
         var sql = $@"
             SELECT
-                COALESCE(SUM(CASE WHEN estado = 'PENDIENTE' THEN 1 ELSE 0 END), 0) Pendientes,
-                COALESCE(SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END), 0) Vencidas,
-                COALESCE(SUM(CASE WHEN estado = 'PAGADA' THEN 1 ELSE 0 END), 0) Pagadas,
-                COALESCE(SUM(CASE WHEN estado = 'PARCIAL' THEN 1 ELSE 0 END), 0) Parciales,
-                COALESCE(SUM(CASE WHEN estado IN ('PENDIENTE','VENCIDA') THEN monto ELSE 0 END), 0) MontoPendiente,
-                COALESCE(SUM(CASE WHEN estado = 'VENCIDA' THEN monto ELSE 0 END), 0) MontoVencido
+                COALESCE(SUM(CASE WHEN pc.estado = 'PENDIENTE' THEN 1 ELSE 0 END), 0) Pendientes,
+                COALESCE(SUM(CASE WHEN pc.estado = 'VENCIDA' THEN 1 ELSE 0 END), 0) Vencidas,
+                COALESCE(SUM(CASE WHEN pc.estado = 'PAGADA' THEN 1 ELSE 0 END), 0) Pagadas,
+                COALESCE(SUM(CASE WHEN pc.estado = 'PARCIAL' THEN 1 ELSE 0 END), 0) Parciales,
+                COALESCE(SUM(CASE WHEN pc.estado IN ('PENDIENTE','VENCIDA') THEN pc.monto ELSE 0 END), 0) MontoPendiente,
+                COALESCE(SUM(CASE WHEN pc.estado = 'VENCIDA' THEN pc.monto ELSE 0 END), 0) MontoVencido
             FROM poliza_cuotas pc
             INNER JOIN polizas p ON p.id = pc.poliza_id
             INNER JOIN clientes c ON c.id = p.cliente_id
@@ -297,7 +290,6 @@ public class PagoRepository
 
     public async Task<int> RegistrarPagoAsync(int cuotaId, PolizaPago pago)
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
         using var tx = cn.BeginTransaction();
 
@@ -328,7 +320,6 @@ public class PagoRepository
 
     public async Task<IEnumerable<PolizaPago>> GetPagosByCuotaAsync(int cuotaId)
     {
-        await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
         const string sql = @"
             SELECT

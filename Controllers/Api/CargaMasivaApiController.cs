@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
 
@@ -8,6 +9,7 @@ namespace ReclamosWhatsApp.Controllers.Api;
 [ApiController]
 [Authorize(Policy = Permissions.ClientesCrear)]
 [Route("api/carga-masiva")]
+[EnableRateLimiting("upload")]
 public class CargaMasivaApiController : ControllerBase
 {
     private readonly PlantillaCargaService _plantillas;

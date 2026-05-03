@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { FileText, Pencil, Plus, Power, Save, X } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Download, FileText, Pencil, Plus, Power, Save, X } from 'lucide-react'
 import { cambiarEstadoCliente, cambiarEstadoPoliza, createCliente, createPoliza, getClienteDetalle, getClientes, getPolizaCuotas, marcarClienteRevisado, updateCliente, updatePoliza, updatePolizaCuotaMonto } from '../api/carteraApi'
 import { getCatalogoByTipo } from '../api/catalogosApi'
 import { StatusPill } from '../components/Badge'
@@ -197,6 +197,15 @@ export function ClientsView() {
           ))}
         </select>
         <button className="primary-button" type="submit">Filtrar</button>
+        <a
+          className="icon-button secondary"
+          href={`/api/cartera/excel/clientes?${new URLSearchParams(Object.fromEntries(Object.entries({ estado, buscar, financiera, aseguradora, ramo, estadoPago, ciudad }).filter(([, v]) => v && v !== 'TODOS')))}`}
+          title="Exportar a Excel"
+          download
+        >
+          <Download size={16} />
+          Excel
+        </a>
       </form>
 
       {loading && <LoadingCard text="Cargando clientes..." />}
@@ -249,7 +258,15 @@ export function ClientsView() {
                       <strong>{item.nombre}</strong>
                       <small>{compactMeta([item.telefono, item.email, item.ciudad])}</small>
                     </span>
-                    <StatusPill text={item.estadoRevision === 'ERROR_IMPORTACION' ? 'Error importacion' : item.requiereRevisionManual || item.estadoRevision === 'PENDIENTE_REVISION' ? 'Pendiente revision' : 'OK'} tone={item.estadoRevision === 'ERROR_IMPORTACION' ? 'danger' : item.requiereRevisionManual || item.estadoRevision === 'PENDIENTE_REVISION' ? 'warning' : 'success'} />
+                    <div className="client-row-badges">
+                      {item.estadoNegocio && item.estadoNegocio !== 'ACTIVO' && (
+                        <StatusPill
+                          text={item.estadoNegocio === 'EN_RIESGO' ? 'En riesgo' : item.estadoNegocio === 'PROSPECTO' ? 'Prospecto' : 'Inactivo'}
+                          tone={item.estadoNegocio === 'EN_RIESGO' ? 'warning' : item.estadoNegocio === 'INACTIVO' ? 'danger' : 'info'}
+                        />
+                      )}
+                      <StatusPill text={item.estadoRevision === 'ERROR_IMPORTACION' ? 'Error importacion' : item.requiereRevisionManual || item.estadoRevision === 'PENDIENTE_REVISION' ? 'Pendiente revision' : 'OK'} tone={item.estadoRevision === 'ERROR_IMPORTACION' ? 'danger' : item.requiereRevisionManual || item.estadoRevision === 'PENDIENTE_REVISION' ? 'warning' : 'success'} />
+                    </div>
                   </button>
                 ))
               )}
@@ -540,15 +557,45 @@ export function ClientDetail({ detail, onSaved, onPolicySaved }: { detail: Clien
           detail.polizas.map((policy) => {
             const editing = editingPolicyId === policy.id && policyForm
             const expanded = expandedPolicies.includes(policy.id)
+
+            // Semáforo: estado calculado desde fecha real
+            const hoy = new Date(); hoy.setHours(0,0,0,0)
+            const hasta = policy.hasta ? new Date(policy.hasta) : null
+            const diasRestantes = hasta ? Math.ceil((hasta.getTime() - hoy.getTime()) / 86400000) : null
+            const semaforoTone =
+              !policy.activo                        ? 'slate'
+              : diasRestantes !== null && diasRestantes < 0  ? 'danger'
+              : diasRestantes !== null && diasRestantes <= 7  ? 'danger'
+              : diasRestantes !== null && diasRestantes <= 30 ? 'warning'
+              : policy.estadoPago === 'MORA'         ? 'warning'
+              :                                        'success'
+            const semaforoTexto =
+              !policy.activo                        ? 'Inactiva'
+              : diasRestantes !== null && diasRestantes < 0  ? `Vencida (${Math.abs(diasRestantes)}d)`
+              : diasRestantes !== null && diasRestantes <= 7  ? `Vence en ${diasRestantes}d`
+              : diasRestantes !== null && diasRestantes <= 30 ? `Vence en ${diasRestantes}d`
+              : policy.estadoPago === 'MORA'         ? 'En mora'
+              :                                        'Vigente'
+
             return (
-              <div className="policy-card" key={policy.id}>
+              <div className={`policy-card semaforo-${semaforoTone}`} key={policy.id}>
                 <div className="policy-head">
                   <FileText size={20} />
                   <div>
                     <strong>{policy.numeroPoliza || 'Sin poliza'}</strong>
                     <span>{compactMeta([policy.aseguradora, policy.ramo, policy.vehiculo, policy.clienteContratanteNombre || 'Sin financiera'])}</span>
                   </div>
-                  <StatusPill text={policy.activo ? 'ACTIVA' : 'INACTIVA'} tone={policy.activo ? 'success' : 'slate'} />
+                  <StatusPill text={semaforoTexto} tone={semaforoTone} />
+                  <a
+                    className="icon-button secondary"
+                    href={`/api/cartera/${policy.id}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Descargar PDF de esta póliza"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Download size={15} />
+                  </a>
                 </div>
                 <div className="policy-actions policy-actions-compact">
                   <button
@@ -576,29 +623,43 @@ export function ClientDetail({ detail, onSaved, onPolicySaved }: { detail: Clien
                   </div>
                 ) : expanded ? (
                   <>
-                    <div className="info-grid compact">
-                      <Info label="Vigencia" value={policy.vigencia ? dateFmt.format(new Date(policy.vigencia)) : 'Sin fecha'} />
-                      <Info label="Hasta" value={policy.hasta ? dateFmt.format(new Date(policy.hasta)) : 'Sin fecha'} />
-                      <Info label="Prima" value={policy.primaTotal ? moneySafe(policy.primaTotal) : 'Sin prima'} />
-                      <Info label="Mes inicio" value={policy.mesInicioPoliza || 'Sin dato'} />
-                      <Info label="Pago" value={statusLabel(policy.estadoPago)} />
-                      <Info label="Financiera" value={policy.clienteContratanteNombre || (policy.clienteContratanteId ? `Cliente #${policy.clienteContratanteId}` : 'Sin contratante')} />
-                      <Info label="Placa" value={policy.placa || 'Sin placa'} />
-                      <Info label="VIN/Serie" value={policy.vinSerie || 'Sin VIN'} />
-                      <Info label="Agente" value={policy.agenteAsignado || 'Sin agente'} />
+                    {/* ── BLOQUE 1: RESUMEN ── */}
+                    <div className="policy-section">
+                      <span className="policy-section-title">Resumen</span>
+                      <div className="info-grid compact">
+                        <Info label="Vigencia" value={policy.vigencia ? dateFmt.format(new Date(policy.vigencia)) : 'Sin fecha'} />
+                        <Info label="Hasta" value={policy.hasta ? dateFmt.format(new Date(policy.hasta)) : 'Sin fecha'} />
+                        <Info label="Prima" value={policy.primaTotal ? moneySafe(policy.primaTotal) : 'Sin prima'} />
+                        <Info label="Mes inicio" value={policy.mesInicioPoliza || 'Sin dato'} />
+                        <Info label="Pago" value={statusLabel(policy.estadoPago)} />
+                        <Info label="Financiera" value={policy.clienteContratanteNombre || (policy.clienteContratanteId ? `Cliente #${policy.clienteContratanteId}` : 'Sin contratante')} />
+                        <Info label="Placa" value={policy.placa || 'Sin placa'} />
+                        <Info label="VIN/Serie" value={policy.vinSerie || 'Sin VIN'} />
+                        <Info label="Agente" value={policy.agenteAsignado || 'Sin agente'} />
+                      </div>
+                      {canEditPolicy && (
+                        <div className="policy-actions">
+                          <button className="icon-button secondary" onClick={() => { setEditingPolicyId(policy.id); setPolicyForm(policy) }} disabled={saving}>
+                            <Pencil size={18} /> Editar
+                          </button>
+                          <button className={`icon-button ${policy.activo ? 'danger-button' : 'secondary'}`} onClick={() => void togglePolicy(policy)} disabled={saving}>
+                            <Power size={18} /> {policy.activo ? 'Inactivar' : 'Activar'}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <PolicyInstallmentsGrid policyId={policy.id} totalCuotas={policy.cuotas} />
-                    {canEditPolicy && <div className="policy-actions">
-                      <button className="icon-button secondary" onClick={() => { setEditingPolicyId(policy.id); setPolicyForm(policy) }} disabled={saving}>
-                        <Pencil size={18} />
-                        Editar
-                      </button>
-                      <button className={`icon-button ${policy.activo ? 'danger-button' : 'secondary'}`} onClick={() => void togglePolicy(policy)} disabled={saving}>
-                        <Power size={18} />
-                        {policy.activo ? 'Inactivar' : 'Activar'}
-                      </button>
-                    </div>}
-                    <DocumentosPanel entidadTipo="POLIZA" entidadId={policy.id} />
+
+                    {/* ── BLOQUE 2: CUOTAS ── */}
+                    <div className="policy-section">
+                      <span className="policy-section-title">Cuotas</span>
+                      <PolicyInstallmentsTable policyId={policy.id} totalCuotas={policy.cuotas} />
+                    </div>
+
+                    {/* ── BLOQUE 3: DOCUMENTOS DE PÓLIZA ── */}
+                    <div className="policy-section">
+                      <span className="policy-section-title">Documentos de póliza</span>
+                      <DocumentosPanel entidadTipo="POLIZA" entidadId={policy.id} />
+                    </div>
                   </>
                 ) : (
                   <div className="inline-alert info">Vista compacta activa. Expande para editar, cuotas y documentos.</div>
@@ -612,12 +673,14 @@ export function ClientDetail({ detail, onSaved, onPolicySaved }: { detail: Clien
   )
 }
 
-function PolicyInstallmentsGrid({ policyId, totalCuotas }: { policyId: number; totalCuotas?: number }) {
+function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; totalCuotas?: number }) {
   const [items, setItems] = useState<PolicyInstallment[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [savingCuotaId, setSavingCuotaId] = useState<number | null>(null)
   const [amountDrafts, setAmountDrafts] = useState<Record<number, string>>({})
+  const [editingCuotaId, setEditingCuotaId] = useState<number | null>(null)
+  const [expandedCuotaDocId, setExpandedCuotaDocId] = useState<number | null>(null)
 
   async function loadInstallments() {
     const data = await getPolizaCuotas(policyId)
@@ -648,9 +711,7 @@ function PolicyInstallmentsGrid({ policyId, totalCuotas }: { policyId: number; t
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : 'No se pudieron cargar las cuotas.')
       })
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [policyId])
 
   useEffect(() => {
@@ -664,67 +725,125 @@ function PolicyInstallmentsGrid({ policyId, totalCuotas }: { policyId: number; t
     polizaId: policyId,
     numeroCuota: index + 1,
     estado: 'PENDIENTE',
-  })
+  } as PolicyInstallment)
 
   return (
-    <section className="installments-grid" aria-label="Cuotas de poliza">
+    <div className="cuotas-table-wrap">
       {error && <div className="inline-alert danger">{error}</div>}
       {message && <div className="inline-alert success">{message}</div>}
-      {slots.map((cuota) => (
-        <div className="installment-slot" key={cuota.numeroCuota}>
-          <div className="installment-slot-head">
-            <strong>Cuota {cuota.numeroCuota}</strong>
-            <StatusPill text={statusLabel(cuota.estado)} tone={stateTone(cuota.estado)} />
-          </div>
-          <span>{cuota.fechaVencimiento ? dateFmt.format(new Date(cuota.fechaVencimiento)) : 'Sin fecha'}</span>
-          <span>{cuota.monto !== undefined ? moneySafe(cuota.monto) : 'Sin monto'}</span>
-          {cuota.id && (
-            <div className="installment-edit-row">
-              <label className="field">
-                <span>Monto cuota</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={amountDrafts[cuota.id] ?? String(cuota.monto ?? 0)}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setAmountDrafts((current) => ({ ...current, [cuota.id!]: value }))
-                  }}
-                />
-              </label>
-              <button
-                className="icon-button secondary"
-                type="button"
-                disabled={savingCuotaId === cuota.id}
-                onClick={async () => {
-                  const raw = amountDrafts[cuota.id!] ?? String(cuota.monto ?? 0)
-                  const parsed = Number(raw)
-                  if (!Number.isFinite(parsed) || parsed < 0) {
-                    setError('El monto debe ser un numero valido mayor o igual a cero.')
-                    return
-                  }
+      <table className="cuotas-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Vencimiento</th>
+            <th>Monto</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {slots.map((cuota) => (
+            <Fragment key={cuota.numeroCuota}>
+              <tr className={cuota.id && (editingCuotaId === cuota.id || expandedCuotaDocId === cuota.id) ? 'cuota-row-active' : ''}>
+                <td className="cuota-num">{cuota.numeroCuota}</td>
+                <td>{cuota.fechaVencimiento ? dateFmt.format(new Date(cuota.fechaVencimiento)) : <span className="text-muted">—</span>}</td>
+                <td>{cuota.monto !== undefined ? moneySafe(cuota.monto) : <span className="text-muted">—</span>}</td>
+                <td><StatusPill text={statusLabel(cuota.estado)} tone={stateTone(cuota.estado)} /></td>
+                <td className="cuota-actions">
+                  {cuota.id ? (
+                    <>
+                      <button
+                        className={`icon-button secondary compact${editingCuotaId === cuota.id ? ' active' : ''}`}
+                        type="button"
+                        title="Editar monto"
+                        onClick={() => {
+                          setEditingCuotaId(editingCuotaId === cuota.id ? null : cuota.id!)
+                          setExpandedCuotaDocId(null)
+                        }}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        className={`icon-button secondary compact${expandedCuotaDocId === cuota.id ? ' active' : ''}`}
+                        type="button"
+                        title="Comprobantes de cuota"
+                        onClick={() => {
+                          setExpandedCuotaDocId(expandedCuotaDocId === cuota.id ? null : cuota.id!)
+                          setEditingCuotaId(null)
+                        }}
+                      >
+                        <FileText size={13} />
+                      </button>
+                    </>
+                  ) : <span className="text-muted">—</span>}
+                </td>
+              </tr>
 
-                  setSavingCuotaId(cuota.id!)
-                  setError(null)
-                  try {
-                    await updatePolizaCuotaMonto(cuota.id!, parsed)
-                    await loadInstallments()
-                    setMessage(`Monto guardado en cuota ${cuota.numeroCuota}.`)
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : 'No se pudo guardar el monto de la cuota.')
-                  } finally {
-                    setSavingCuotaId(null)
-                  }
-                }}
-              >
-                {savingCuotaId === cuota.id ? 'Guardando...' : 'Guardar monto'}
-              </button>
-            </div>
-          )}
-          {cuota.id ? <DocumentosPanel entidadTipo="PAGO" entidadId={cuota.id} compact /> : <div className="empty compact-empty">Sin comprobante</div>}
-        </div>
-      ))}
-    </section>
+              {cuota.id && editingCuotaId === cuota.id && (
+                <tr className="cuota-row-detail">
+                  <td colSpan={5}>
+                    <div className="cuota-edit-inline">
+                      <label className="field compact-field">
+                        <span>Monto cuota {cuota.numeroCuota}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={amountDrafts[cuota.id] ?? String(cuota.monto ?? 0)}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setAmountDrafts((current) => ({ ...current, [cuota.id!]: value }))
+                          }}
+                        />
+                      </label>
+                      <div className="cuota-edit-actions">
+                        <button
+                          className="primary-button"
+                          type="button"
+                          disabled={savingCuotaId === cuota.id}
+                          onClick={async () => {
+                            const raw = amountDrafts[cuota.id!] ?? String(cuota.monto ?? 0)
+                            const parsed = Number(raw)
+                            if (!Number.isFinite(parsed) || parsed < 0) {
+                              setError('El monto debe ser un numero valido mayor o igual a cero.')
+                              return
+                            }
+                            setSavingCuotaId(cuota.id!)
+                            setError(null)
+                            try {
+                              await updatePolizaCuotaMonto(cuota.id!, parsed)
+                              await loadInstallments()
+                              setMessage(`Monto guardado en cuota ${cuota.numeroCuota}.`)
+                              setEditingCuotaId(null)
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : 'No se pudo guardar el monto de la cuota.')
+                            } finally {
+                              setSavingCuotaId(null)
+                            }
+                          }}
+                        >
+                          {savingCuotaId === cuota.id ? 'Guardando...' : 'Guardar'}
+                        </button>
+                        <button className="icon-button secondary" type="button" onClick={() => setEditingCuotaId(null)}>
+                          <X size={14} /> Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {cuota.id && expandedCuotaDocId === cuota.id && (
+                <tr className="cuota-row-detail">
+                  <td colSpan={5}>
+                    <DocumentosPanel entidadTipo="PAGO" entidadId={cuota.id} compact />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
