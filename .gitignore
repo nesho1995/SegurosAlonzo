@@ -22,3 +22,4 @@ WhatsApp Image*.jpeg
 # IDE/editor
 .vs/
 .vscode/
+.claude/

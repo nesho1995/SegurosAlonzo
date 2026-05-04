@@ -1,1 +1,0 @@
-export function ErrorCard({ text }: { text: string | null }) { return (<div className="state-card error"><strong>No se pudo cargar la informacion.</strong><p>{text || 'Error inesperado.'}</p></div>) }
