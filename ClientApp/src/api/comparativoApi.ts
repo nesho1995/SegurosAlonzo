@@ -56,5 +56,9 @@ export const actualizarItem = (comparativoId: number, item: ComparativoItem) =>
 export const eliminarItem = (comparativoId: number, itemId: number) =>
   req<{ ok: boolean }>(`${base}/${comparativoId}/items/${itemId}`, { method: 'DELETE' })
 
+export const reprocesarItem = (comparativoId: number, itemId: number) =>
+  req<import('../types/comparativo').ComparativoItem>(
+    `${base}/${comparativoId}/items/${itemId}/reprocesar`, { method: 'POST' })
+
 export const urlExcelComparativo = (id: number) => `${base}/${id}/excel`
 export const urlPdfComparativo   = (id: number) => `${base}/${id}/pdf-reporte`

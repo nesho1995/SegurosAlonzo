@@ -118,6 +118,32 @@ public class ComparativoApiController : ControllerBase
         return Ok(creado);
     }
 
+    // ─── Re-procesar item (re-parsea texto_extraido con patrones actuales) ────
+
+    [HttpPost("{id:int}/items/{itemId:int}/reprocesar")]
+    public async Task<IActionResult> ReprocesarItem(int id, int itemId)
+    {
+        var detalle = await _repo.GetDetalleAsync(id);
+        if (detalle == null) return NotFound(new { error = "Comparativo no encontrado." });
+
+        var existing = detalle.Items.FirstOrDefault(i => i.Id == itemId);
+        if (existing == null) return NotFound(new { error = "Item no encontrado." });
+
+        if (string.IsNullOrWhiteSpace(existing.TextoExtraido))
+            return BadRequest(new { error = "No hay texto extraído guardado para este item." });
+
+        var parsed = PdfExtractorService.ParseFields(
+            existing.TextoExtraido, existing.NombreArchivo ?? "");
+        parsed.Id            = itemId;
+        parsed.ComparativoId = id;
+
+        await _repo.ActualizarItemAsync(parsed);
+        await _repo.RecalcularRankingAsync(id);
+
+        var actualizado = await _repo.GetDetalleAsync(id);
+        return Ok(actualizado!.Items.First(i => i.Id == itemId));
+    }
+
     // ─── Actualizar item ─────────────────────────────────────────────────────
 
     [HttpPut("{id:int}/items/{itemId:int}")]

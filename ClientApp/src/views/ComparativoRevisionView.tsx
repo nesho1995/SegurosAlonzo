@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileDown, FileText, Loader2, Medal, Pencil, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Download, FileDown, FileText, Loader2, Medal, Pencil, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import {
   actualizarItem, eliminarItem, getComparativoDetalle,
-  subirPdf, urlExcelComparativo, urlPdfComparativo,
+  reprocesarItem, subirPdf, urlExcelComparativo, urlPdfComparativo,
 } from '../api/comparativoApi'
 import { ErrorCard } from '../components/ErrorAlert'
 import { StatusPill } from '../components/Badge'
@@ -60,6 +60,14 @@ export function ComparativoRevisionView({ comparativoId, onBack }: Props) {
     if (!confirm('¿Quitar esta aseguradora del comparativo?')) return
     try { await eliminarItem(comparativoId, itemId); load() }
     catch (e) { setError(e instanceof Error ? e.message : 'Error') }
+  }
+
+  const [reprocesando, setReprocesando] = useState<number | null>(null)
+  async function handleReprocesar(itemId: number) {
+    setReprocesando(itemId)
+    try { await reprocesarItem(comparativoId, itemId); load() }
+    catch (e) { setError(e instanceof Error ? e.message : 'Error al re-procesar') }
+    finally { setReprocesando(null) }
   }
 
   if (!detalle) return <div className="empty-state"><Loader2 className="spin" size={24} />Cargando…</div>
@@ -126,6 +134,9 @@ export function ComparativoRevisionView({ comparativoId, onBack }: Props) {
                         {item.posicion === 1 && <Medal size={14} className="comp-medal" />}
                         <span>{item.aseguradora}</span>
                         <div className="comp-insurer-actions">
+                          <button className="icon-button-xs" onClick={() => handleReprocesar(item.id)} title="Re-procesar PDF" disabled={reprocesando === item.id}>
+                            {reprocesando === item.id ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+                          </button>
                           <button className="icon-button-xs" onClick={() => setEditId(editId === item.id ? null : item.id)} title="Editar"><Pencil size={12} /></button>
                           <button className="icon-button-xs danger" onClick={() => handleDelete(item.id)} title="Quitar"><X size={12} /></button>
                         </div>
