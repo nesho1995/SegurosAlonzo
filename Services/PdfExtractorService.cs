@@ -159,26 +159,38 @@ public static class PdfExtractorService
 
     static readonly string[] PrimaAnualPatterns =
     [
-        @"prima\s*(?:neta\s*)?(?:total|anual)\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"prima\s+anual\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"total\s+prima\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"prima\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"[LH]\.\s*([\d,\.]{5,})",
+        // FICOHSA: "(=) Prima Total Anual L. 49,157.92"
+        @"\(?=?\)?\s*prima\s*total\s*anual\s*L\.?\s*([\d,\.]+)",
+        @"prima\s*total\s*anual\s*L\.?\s*([\d,\.]+)",
+        // Genérico
+        @"prima\s*(?:neta\s*)?(?:total|anual)\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"prima\s+anual\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"total\s+prima\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        // Total Prima Neta - Descuento + asistencias → prima base
+        @"Total\s+Prima\s+Neta\s*[‐\-–]\s*Descuento\s*\+[^L]*L\.?\s*([\d,\.]+)",
+        @"prima\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
     ];
 
     static readonly string[] PrimaMensualPatterns =
     [
-        @"prima\s*mensual\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"cuota\s*mensual\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"pago\s*mensual\s*[:\s]+[LH]?\s*([\d,\.]+)",
+        // FICOHSA: "1 de 10 L 4,244.17"  — primera cuota del plan de pagos
+        @"\b1\s*de\s*\d+\s*L\s*([\d,\.]+)",
+        @"prima\s*mensual\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"cuota\s*mensual\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"pago\s*mensual\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
     ];
 
     static readonly string[] SumaAseguradaPatterns =
     [
-        @"suma\s*asegurada\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"valor\s*asegurado\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"valor\s*del\s*veh[íi]culo\s*[:\s]+[LH]?\s*([\d,\.]+)",
-        @"valor\s*comercial\s*[:\s]+[LH]?\s*([\d,\.]+)",
+        // FICOHSA: "L. 1,922,176.57 Sub ‐ Prima Neta"
+        @"L\.?\s*([\d,\.]+)\s*Sub\s*[‐\-–]?\s*Prima\s*Neta",
+        // Genérico por etiqueta
+        @"suma\s*asegurada\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"valor\s*asegurado\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"valor\s*del\s*veh[íi]culo\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        @"valor\s*comercial\s*[:\s]+[LH]?\.?\s*([\d,\.]+)",
+        // Tabla: año 4 dígitos, luego L, luego monto grande, luego porcentaje
+        @"\b20\d\d\s+L\s+([\d,\.]{8,})\s+\d+\.\d+%",
     ];
 
     static readonly string[] VigenciaDesdePatterns =
@@ -195,14 +207,19 @@ public static class PdfExtractorService
 
     static readonly string[] DeducibleColisionPatterns =
     [
+        // FICOHSA: "A Colisión y vuelcos accidentales Valor del vehículo 1.50%"
+        @"Colisi[oó]n[^%\n]{0,60}?(\d+[\.,]\d+)\s*(%)",
+        // Con la palabra deducible
         @"deducible\s*(?:por\s*)?(?:colisi[oó]n|da[nñ]os\s*propios)[^\d]*([\d,\.]+)\s*(%)?",
-        @"(?:colisi[oó]n|choque)[^\d]*([\d,\.]+)\s*(%)?",
+        @"(?:colisi[oó]n|choque)[^%\n]{0,40}?(\d+[\.,]\d+)\s*(%)",
     ];
 
     static readonly string[] DeducibleRoboPatterns =
     [
+        // FICOHSA: "B2 Robo Total Valor del vehículo 15.00%"
+        @"Robo\s*Total[^%\n]{0,60}?(\d+[\.,]\d+)\s*(%)",
         @"deducible\s*(?:por\s*)?robo\s*(?:total)?[^\d]*([\d,\.]+)\s*(%)?",
-        @"robo\s*total[^\d]*([\d,\.]+)\s*(%)?",
+        @"robo\s*total[^%\n]{0,40}?(\d+[\.,]\d+)\s*(%)",
     ];
 
     static readonly string[] DescuentoContadoPatterns =
@@ -264,24 +281,40 @@ public static class PdfExtractorService
 
     static string ExtractFormaPago(string text)
     {
+        // FICOHSA: "máximo de 10 pagos" / "1 de 10"
+        var mPagos = Regex.Match(text, @"\bm[aá]ximo\s*de\s*(\d+)\s*pagos?\b", RegexOptions.IgnoreCase);
+        if (mPagos.Success) return $"{mPagos.Groups[1].Value} cuotas";
+
+        var mDe = Regex.Match(text, @"\b1\s*de\s*(\d+)\b", RegexOptions.IgnoreCase);
+        if (mDe.Success) return $"{mDe.Groups[1].Value} cuotas";
+
+        var mCuotas = Regex.Match(text, @"(\d+)\s*cuotas?", RegexOptions.IgnoreCase);
+        if (mCuotas.Success) return $"{mCuotas.Groups[1].Value} cuotas";
+
         if (Regex.IsMatch(text, @"\bcontado\b",    RegexOptions.IgnoreCase)) return "Contado";
         if (Regex.IsMatch(text, @"\bmensual\b",    RegexOptions.IgnoreCase)) return "Mensual";
         if (Regex.IsMatch(text, @"\btrimestral\b", RegexOptions.IgnoreCase)) return "Trimestral";
         if (Regex.IsMatch(text, @"\bsemestral\b",  RegexOptions.IgnoreCase)) return "Semestral";
         if (Regex.IsMatch(text, @"\banual\b",      RegexOptions.IgnoreCase)) return "Anual";
-        var mc = Regex.Match(text, @"(\d+)\s*cuotas?", RegexOptions.IgnoreCase);
-        if (mc.Success) return $"{mc.Groups[1].Value} cuotas";
         return "No especificado";
     }
 
     static readonly string[] CoberturaKeywords =
     [
+        // Coberturas base
         "Robo total", "Robo parcial", "Daños propios", "Colisión", "Choque",
         "Responsabilidad civil", "Daños a terceros", "Gastos médicos",
         "Asistencia en carretera", "Vehículo de reemplazo", "Cristales",
         "Desastres naturales", "Inundación", "Terremoto", "Incendio",
         "Vandalismo", "Accidente", "Muerte accidental", "Invalidez",
         "Grúa", "Remolque", "Rotura de llanta",
+        // FICOHSA específicas
+        "Incendio, Autoignición y Rayo", "Huelgas y alborotos",
+        "Rotura de cristales", "Fenómenos naturales",
+        "Extensión Territorial", "Gastos Médicos", "Muerte accidental",
+        "Incapacidad total", "Bolsas de Aire", "Equipo especial",
+        "Pérdida total", "Conductor seguro", "Asistencia vial",
+        "RC Cruzada", "Gastos fúnebres",
     ];
 
     static string ExtractCoberturas(string text)
