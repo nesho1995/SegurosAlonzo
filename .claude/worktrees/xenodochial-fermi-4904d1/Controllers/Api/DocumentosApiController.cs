@@ -1,0 +1,143 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ReclamosWhatsApp.Data;
+using ReclamosWhatsApp.Security;
+using ReclamosWhatsApp.Services;
+
+namespace ReclamosWhatsApp.Controllers.Api;
+
+[ApiController]
+[Authorize]
+[Route("api/documentos")]
+public class DocumentosApiController : ControllerBase
+{
+    private readonly DocumentoRepository _documentos;
+    private readonly DocumentoStorageService _storage;
+    private readonly AuditoriaService _auditoria;
+
+    public DocumentosApiController(DocumentoRepository documentos, DocumentoStorageService storage, AuditoriaService auditoria)
+    {
+        _documentos = documentos;
+        _storage = storage;
+        _auditoria = auditoria;
+    }
+
+    [HttpPost("upload")]
+    [Authorize(Policy = Permissions.DocumentosSubir)]
+    public async Task<IActionResult> Upload([FromForm] IFormFile archivo, [FromForm] string entidadTipo, [FromForm] int entidadId, [FromForm] string? tipoDocumento)
+    {
+        try
+        {
+            var usuarioId = GetUsuarioId();
+            var documento = await _storage.GuardarAsync(archivo, entidadTipo, entidadId, tipoDocumento ?? "General", usuarioId);
+            await _auditoria.RegistrarAsync("SUBIR_DOCUMENTO", entidadTipo.Trim().ToUpperInvariant(), entidadId, $"Documento subido: {documento.NombreArchivoOriginal}.");
+            return Ok(documento);
+        }
+        catch (InvalidOperationException)
+        {
+            return BadRequest(new { error = "El documento no cumple las condiciones requeridas." });
+        }
+        catch
+        {
+            return BadRequest(new { error = "No se pudo guardar el documento. Intenta nuevamente." });
+        }
+    }
+
+    [HttpGet("{entidadTipo}/{entidadId:int}")]
+    [Authorize(Policy = Permissions.DocumentosVer)]
+    public async Task<IActionResult> Get(string entidadTipo, int entidadId)
+    {
+        var items = await _documentos.GetByEntidadAsync(entidadTipo.Trim().ToUpperInvariant(), entidadId);
+        return Ok(new { items });
+    }
+
+    [HttpGet("download/{id:int}")]
+    [Authorize(Policy = Permissions.DocumentosVer)]
+    public async Task<IActionResult> Download(int id)
+    {
+        try
+        {
+            var (documento, absolutePath) = await _storage.PrepararDescargaAsync(id);
+            var contentType = string.IsNullOrWhiteSpace(documento.MimeType) ? GetContentType(documento.Extension) : documento.MimeType;
+            await _auditoria.RegistrarAsync("DESCARGAR_DOCUMENTO", documento.EntidadTipo, documento.EntidadId, $"Documento descargado: {documento.NombreArchivoOriginal}.");
+            return PhysicalFile(absolutePath, contentType, documento.NombreArchivoOriginal);
+        }
+        catch
+        {
+            return NotFound(new { error = "El documento no esta disponible." });
+        }
+    }
+
+    [HttpGet("{id:int}/ver")]
+    [Authorize(Policy = Permissions.DocumentosVer)]
+    public async Task<IActionResult> Ver(int id)
+    {
+        try
+        {
+            var (documento, absolutePath) = await _storage.PrepararDescargaAsync(id);
+            var contentType = string.IsNullOrWhiteSpace(documento.MimeType) ? GetContentType(documento.Extension) : documento.MimeType;
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{documento.NombreArchivoOriginal}\"";
+            await _auditoria.RegistrarAsync("VER_DOCUMENTO", documento.EntidadTipo, documento.EntidadId, $"Documento visualizado: {documento.NombreArchivoOriginal}.");
+            return PhysicalFile(absolutePath, contentType);
+        }
+        catch
+        {
+            return NotFound(new { error = "El documento no esta disponible." });
+        }
+    }
+
+    [HttpGet("{id:int}/descargar")]
+    [Authorize(Policy = Permissions.DocumentosVer)]
+    public async Task<IActionResult> Descargar(int id)
+    {
+        try
+        {
+            var (documento, absolutePath) = await _storage.PrepararDescargaAsync(id);
+            var contentType = string.IsNullOrWhiteSpace(documento.MimeType) ? GetContentType(documento.Extension) : documento.MimeType;
+            await _auditoria.RegistrarAsync("DESCARGAR_DOCUMENTO", documento.EntidadTipo, documento.EntidadId, $"Documento descargado: {documento.NombreArchivoOriginal}.");
+            return PhysicalFile(absolutePath, contentType, documento.NombreArchivoOriginal);
+        }
+        catch
+        {
+            return NotFound(new { error = "El documento no esta disponible." });
+        }
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Policy = Permissions.DocumentosEliminar)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        try
+        {
+            await _storage.EliminarAsync(id);
+            await _auditoria.RegistrarAsync("ELIMINAR_DOCUMENTO", "DOCUMENTO", id, "Documento eliminado.");
+            return NoContent();
+        }
+        catch (InvalidOperationException)
+        {
+            return BadRequest(new { error = "El documento no se puede eliminar en este momento." });
+        }
+        catch
+        {
+            return BadRequest(new { error = "No se pudo eliminar el documento." });
+        }
+    }
+
+    private int? GetUsuarioId()
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return int.TryParse(value, out var id) ? id : null;
+    }
+
+    private static string GetContentType(string extension)
+    {
+        return extension.TrimStart('.').ToLowerInvariant() switch
+        {
+            "pdf" => "application/pdf",
+            "jpg" or "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            _ => "application/octet-stream"
+        };
+    }
+}

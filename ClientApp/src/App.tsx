@@ -30,6 +30,8 @@ import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 import { GlobalSearch } from './components/GlobalSearch'
 import { CotizacionesView } from './views/CotizacionesView'
 import { CotizacionRevisionView } from './views/CotizacionRevisionView'
+import { ComparativosView } from './views/ComparativosView'
+import { ComparativoRevisionView } from './views/ComparativoRevisionView'
 import { ToastHost } from './components/ToastHost'
 
 const navItems = [
@@ -40,6 +42,7 @@ const navItems = [
   { id: 'pagos',           label: 'Cobros y Cuotas',   icon: CreditCard,      section: 'Cartera' },
   { id: 'gastos',          label: 'Gastos',             icon: ReceiptText,     section: 'Cartera' },
   { id: 'cotizaciones',   label: 'Cotizaciones',       icon: FileSearch,      section: 'Cartera' },
+  { id: 'comparativos',   label: 'Comparar ofertas',   icon: FileSearch,      section: 'Cartera' },
   { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
   // Operaciones
   { id: 'reclamos',        label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
@@ -70,12 +73,14 @@ function App() {
 
 function AppRouter() {
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname))
-  const [cotizacionId, setCotizacionId] = useState<number | null>(null)
+  const [cotizacionId, setCotizacionId]       = useState<number | null>(null)
+  const [comparativoId, setComparativoId]     = useState<number | null>(null)
   const { user, loading, hasPermission } = useAuth()
 
   function navigate(nextView: View) {
     setView(nextView)
-    if (nextView !== 'cotizaciones') setCotizacionId(null)
+    if (nextView !== 'cotizaciones')  setCotizacionId(null)
+    if (nextView !== 'comparativos')  setComparativoId(null)
     window.history.pushState(null, '', pathFromView(nextView))
   }
 
@@ -131,6 +136,12 @@ function AppRouter() {
       )}
       {view === 'cotizaciones' && cotizacionId !== null && (
         <CotizacionRevisionView cotizacionId={cotizacionId} onBack={() => setCotizacionId(null)} />
+      )}
+      {view === 'comparativos' && comparativoId === null && (
+        <ComparativosView onOpen={id => setComparativoId(id)} />
+      )}
+      {view === 'comparativos' && comparativoId !== null && (
+        <ComparativoRevisionView comparativoId={comparativoId} onBack={() => setComparativoId(null)} />
       )}
       {view === 'automatizaciones' && <AutomationView />}
       {view === 'extractor' && <ExtractorView />}

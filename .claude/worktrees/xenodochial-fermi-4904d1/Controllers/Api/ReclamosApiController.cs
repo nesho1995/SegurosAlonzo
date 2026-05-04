@@ -1,0 +1,266 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using ReclamosWhatsApp.Data;
+using ReclamosWhatsApp.Models;
+using ReclamosWhatsApp.Security;
+using ReclamosWhatsApp.Services;
+
+namespace ReclamosWhatsApp.Controllers.Api;
+
+[ApiController]
+[Authorize(Policy = Permissions.ReclamosVer)]
+[Route("api/reclamos")]
+public class ReclamosApiController : ControllerBase
+{
+    private readonly ReclamoRepository _reclamos;
+    private readonly DocumentoRepository _documentos;
+    private readonly WhatsAppService _whatsApp;
+    private readonly EmailSenderService _emailSender;
+    private readonly AuditoriaService _auditoria;
+
+    public ReclamosApiController(ReclamoRepository reclamos, DocumentoRepository documentos, WhatsAppService whatsApp, EmailSenderService emailSender, AuditoriaService auditoria)
+    {
+        _reclamos = reclamos;
+        _documentos = documentos;
+        _whatsApp = whatsApp;
+        _emailSender = emailSender;
+        _auditoria = auditoria;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Get(string? estado = null, string? buscar = null)
+    {
+        var items = await _reclamos.GetAllAsync();
+
+        if (!string.IsNullOrWhiteSpace(estado) && estado != "TODOS")
+            items = items.Where(x => (x.EstadoReclamo ?? x.Estado) == estado);
+
+        if (!string.IsNullOrWhiteSpace(buscar))
+        {
+            var text = buscar.Trim();
+            items = items.Where(x =>
+                (x.Conductor ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Asegurado ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Poliza ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Placa ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Reclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var result = items.Take(100).ToList();
+        var enriched = new List<object>(result.Count);
+        foreach (var item in result)
+        {
+            var faltantes = await _reclamos.CountFaltantesByEntidadDocumentosAsync(item.Id, item.TipoReclamo ?? "GENERAL");
+            enriched.Add(new
+            {
+                item.Id,
+                item.Asunto,
+                item.Aseguradora,
+                item.Asegurado,
+                item.Poliza,
+                item.Placa,
+                item.Reclamo,
+                item.Conductor,
+                item.Celular,
+                item.FechaNotificacion,
+                item.LugarAccidente,
+                Estado = item.EstadoReclamo ?? item.Estado,
+                item.TipoReclamo,
+                item.NumeroReclamo,
+                item.MontoEstimado,
+                item.MontoAprobado,
+                item.MontoPagado,
+                item.FechaCreacion,
+                item.CiudadDetectada,
+                item.TallerSugeridoId,
+                item.TallerAsignadoId,
+                item.MotivoSugerenciaTaller,
+                DocumentosPendientes = faltantes
+            });
+        }
+
+        return Ok(new { items = enriched, total = items.Count() });
+    }
+
+    [HttpPost]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> Create([FromBody] ReclamoWhatsApp model)
+    {
+        model.Estado = string.IsNullOrWhiteSpace(model.Estado) ? "NUEVO" : model.Estado.Trim().ToUpperInvariant();
+        model.EstadoReclamo = model.Estado;
+        model.TipoReclamo = string.IsNullOrWhiteSpace(model.TipoReclamo) ? "GENERAL" : model.TipoReclamo.Trim().ToUpperInvariant();
+        model.FechaReclamo = model.FechaReclamo ?? model.FechaNotificacion ?? DateTime.Today;
+        model.ActualizadoEn = DateTime.UtcNow;
+        var id = await _reclamos.InsertAsync(model);
+        var faltantes = await _reclamos.CountFaltantesByEntidadDocumentosAsync(id, model.TipoReclamo);
+        if (faltantes > 0)
+            await _reclamos.UpdateEstadoAsync(id, "DOCUMENTOS_PENDIENTES");
+        await _auditoria.RegistrarAsync("CREAR_RECLAMO", "RECLAMO", id, $"Reclamo creado. Tipo={model.TipoReclamo}.");
+        return Ok(new { id, documentosPendientes = faltantes });
+    }
+
+    [HttpGet("{id:int}/checklist")]
+    public async Task<IActionResult> GetChecklist(int id, [FromQuery] string? tipoReclamo = null)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+        var tipo = string.IsNullOrWhiteSpace(tipoReclamo) ? reclamo.TipoReclamo ?? "GENERAL" : tipoReclamo!;
+        var requisitos = await _reclamos.GetRequisitosByTipoAsync(tipo);
+        var faltantes = await _reclamos.CountFaltantesByEntidadDocumentosAsync(id, tipo);
+        return Ok(new { tipoReclamo = tipo, requisitos, documentosPendientes = faltantes });
+    }
+
+    [HttpGet("{id:int}/documentos-pendientes")]
+    public async Task<IActionResult> GetDocumentosPendientes(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.CrearDocumentosInicialesAsync(id);
+        var documentos = await _reclamos.GetDocumentosAsync(id);
+        return Ok(new { items = documentos, pendientes = documentos.Count(x => !x.Recibido) });
+    }
+
+    [HttpPut("{id:int}/documentos/{documentoId:int}")]
+    [Authorize(Policy = Permissions.DocumentosSubir)]
+    public async Task<IActionResult> ActualizarDocumentoPendiente(int id, int documentoId, [FromBody] ActualizarDocumentoReclamoRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        var yaEstabaCompleto = await _reclamos.TodosDocumentosRecibidosAsync(id);
+        await _reclamos.ActualizarDocumentoAsync(documentoId, id, request.Recibido);
+        var completo = await _reclamos.TodosDocumentosRecibidosAsync(id);
+        await _reclamos.UpdateEstadoAsync(id, completo ? "COMPLETO" : "EN_SEGUIMIENTO");
+        if (completo && !yaEstabaCompleto)
+        {
+            var result = await _whatsApp.EnviarDocumentosRecibidosAsync(reclamo);
+            await _auditoria.RegistrarAsync(result.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS", "RECLAMO", id, result.ok ? "Cliente notificado por documentos completos." : result.response);
+        }
+        await _auditoria.RegistrarAsync(
+            "ACTUALIZAR_DOCUMENTO_RECLAMO",
+            "RECLAMO",
+            id,
+            $"Documento {documentoId} marcado como {(request.Recibido ? "recibido" : "pendiente")}.");
+
+        return NoContent();
+    }
+
+    [HttpPost("requisitos")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> UpsertRequisito([FromBody] ReclamoRequisito model)
+    {
+        var id = await _reclamos.UpsertRequisitoAsync(model);
+        await _auditoria.RegistrarAsync("RECLAMO_REQUISITO_UPSERT", "RECLAMO_REQUISITO", id, $"{model.TipoReclamo}:{model.TipoDocumento} requerido={model.Requerido}");
+        return Ok(new { id });
+    }
+
+    [HttpPost("{id:int}/solicitar-documentos")]
+    [Authorize(Policy = Permissions.ReclamosEnviar)]
+    public async Task<IActionResult> SolicitarDocumentosFaltantes(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+        await _reclamos.CrearDocumentosInicialesAsync(id);
+        await _reclamos.UpdateEstadoAsync(id, "DOCUMENTOS_PENDIENTES");
+        await _auditoria.RegistrarAsync("SOLICITAR_DOCUMENTOS_RECLAMO", "RECLAMO", id, "Se solicito documentos faltantes.");
+        return NoContent();
+    }
+
+    [HttpPost("{id:int}/marcar-documentos-completos")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> MarcarDocumentosCompletos(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+        await _reclamos.CrearDocumentosInicialesAsync(id);
+        if (await _reclamos.TodosDocumentosRecibidosAsync(id))
+        {
+            await _auditoria.RegistrarAsync("DOCUMENTOS_COMPLETOS_SIN_ENVIO", "RECLAMO", id, "Se evito reenvio porque el reclamo ya tenia todos los documentos recibidos.");
+            return Ok(new { ok = false, response = "Este reclamo ya estaba marcado con todos los documentos recibidos. No se reenvio WhatsApp." });
+        }
+
+        await _reclamos.MarcarTodosDocumentosAsync(id, recibido: true);
+        await _reclamos.UpdateEstadoAsync(id, "DOCUMENTOS_COMPLETOS");
+        var result = await _whatsApp.EnviarDocumentosRecibidosAsync(reclamo);
+        await _auditoria.RegistrarAsync(result.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS", "RECLAMO", id, result.ok ? "Cliente notificado por documentos completos." : result.response);
+        await _auditoria.RegistrarAsync("MARCAR_DOCUMENTOS_COMPLETOS_RECLAMO", "RECLAMO", id, "Documentos marcados como completos.");
+        return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPost("{id:int}/enviar-aseguradora")]
+    [Authorize(Policy = Permissions.ReclamosEnviar)]
+    public async Task<IActionResult> EnviarAseguradora(int id, [FromBody] EnviarAseguradoraRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
+        var result = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, request.CorreoAseguradora, documentos);
+        await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA" : "ERROR_ENVIAR_DOCUMENTOS_ASEGURADORA", "RECLAMO", id, result.ok ? $"Documentos enviados a {request.CorreoAseguradora}." : result.response);
+        return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPost("{id:int}/enviar-whatsapp")]
+    [Authorize(Policy = Permissions.ReclamosEnviar)]
+    public async Task<IActionResult> EnviarWhatsApp(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        var result = await _whatsApp.SendTemplateAsync(reclamo);
+        await _reclamos.UpdateEstadoAsync(id, result.ok ? "ENVIADO" : "ERROR", result.ok ? null : result.response);
+        await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_WHATSAPP" : "ERROR_WHATSAPP", "RECLAMO", id, result.ok ? "WhatsApp manual enviado para reclamo." : "Error enviando WhatsApp manual para reclamo.");
+        return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPost("{id:int}/enviar-recordatorio")]
+    [Authorize(Policy = Permissions.ReclamosEnviar)]
+    public async Task<IActionResult> EnviarRecordatorioManual(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.CrearDocumentosInicialesAsync(id);
+        var documentos = await _reclamos.GetDocumentosAsync(id);
+        var result = await _whatsApp.EnviarRecordatorioAsync(reclamo, documentos);
+        if (result.ok)
+        {
+            await _reclamos.MarcarRecordatorioAsync(id);
+            await _auditoria.RegistrarAsync("ENVIAR_RECORDATORIO", "RECLAMO", id, "Recordatorio manual enviado.");
+        }
+        else if (result.response.StartsWith("No hay documentos pendientes", StringComparison.OrdinalIgnoreCase))
+        {
+            await _auditoria.RegistrarAsync("RECORDATORIO_NO_APLICA", "RECLAMO", id, result.response);
+        }
+        else
+        {
+            await _reclamos.UpdateEstadoAsync(id, "ERROR", result.response);
+            await _auditoria.RegistrarAsync("ERROR_RECORDATORIO", "RECLAMO", id, "Error enviando recordatorio manual.");
+        }
+
+        return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPost("{id:int}/reprocesar-correo")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> ReprocesarCorreo(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+        await _auditoria.RegistrarAsync("REPROCESAR_CORREO_RECLAMO", "RECLAMO", id, "Se solicito reproceso manual del correo.");
+        return Ok(new { message = "Reproceso registrado para seguimiento." });
+    }
+}
+
+public sealed record ActualizarDocumentoReclamoRequest(bool Recibido);
+public sealed record EnviarAseguradoraRequest(string CorreoAseguradora);

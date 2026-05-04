@@ -108,6 +108,7 @@ builder.Services.AddScoped<AutomationRepository>();
 builder.Services.AddScoped<EmpresaConfiguracionRepository>();
 builder.Services.AddScoped<GastoRepository>();
 builder.Services.AddScoped<CotizacionRepository>();
+builder.Services.AddScoped<ComparativoRepository>();
 builder.Services.AddScoped<CatalogoRepository>();
 builder.Services.AddScoped<WhatsAppEnvioLogRepository>();
 builder.Services.AddScoped<ReclamoPatronesRepository>();
@@ -231,6 +232,10 @@ using (var scope = app.Services.CreateScope())
     // Inicializar schema de cotizaciones
     var cotizaciones = scope.ServiceProvider.GetRequiredService<CotizacionRepository>();
     await cotizaciones.EnsureSchemaAsync();
+
+    // Inicializar schema de comparativos
+    var comparativos = scope.ServiceProvider.GetRequiredService<ComparativoRepository>();
+    await comparativos.EnsureSchemaAsync();
 
     // Sincronizar estado_negocio de clientes al arrancar
     var clientesActualizados = await cartera.SincronizarEstadosClientesAsync();

@@ -1,0 +1,37 @@
+namespace ReclamosWhatsApp.Models;
+
+public class ReclamoWhatsApp
+{
+    public int Id { get; set; }
+    public string MessageId { get; set; } = string.Empty;
+    public string? Asunto { get; set; }
+    public string? Aseguradora { get; set; }
+    public string? Asegurado { get; set; }
+    public string? Poliza { get; set; }
+    public string? Placa { get; set; }
+    public string? Reclamo { get; set; }
+    public string? Conductor { get; set; }
+    public string? Celular { get; set; }
+    public DateTime? FechaNotificacion { get; set; }
+    public string? LugarAccidente { get; set; }
+    public string? MensajeWhatsApp { get; set; }
+    public string Estado { get; set; } = "PENDIENTE";
+    public int? ClienteId { get; set; }
+    public int? PolizaId { get; set; }
+    public string? NumeroReclamo { get; set; }
+    public DateTime? FechaReclamo { get; set; }
+    public string? TipoReclamo { get; set; }
+    public string? EstadoReclamo { get; set; }
+    public int? TallerSugeridoId { get; set; }
+    public int? TallerAsignadoId { get; set; }
+    public string? CiudadDetectada { get; set; }
+    public string? MotivoSugerenciaTaller { get; set; }
+    public string? Descripcion { get; set; }
+    public decimal? MontoEstimado { get; set; }
+    public decimal? MontoAprobado { get; set; }
+    public decimal? MontoPagado { get; set; }
+    public DateTime? ActualizadoEn { get; set; }
+    public DateTime FechaCreacion { get; set; }
+    public DateTime? FechaEnvio { get; set; }
+    public string? Error { get; set; }
+}

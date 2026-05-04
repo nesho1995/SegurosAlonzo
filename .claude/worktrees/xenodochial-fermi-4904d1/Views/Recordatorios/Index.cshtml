@@ -1,0 +1,214 @@
+@model ReclamosWhatsApp.Models.RecordatorioBandejaViewModel
+
+@{
+    ViewData["Title"] = "Recordatorios";
+    var filtro = Model.Filtro;
+    dynamic stats = Model.Stats!;
+    string Query(int pagina) =>
+        $"/Recordatorios?estado={Uri.EscapeDataString(filtro.Estado ?? "")}&tipo={Uri.EscapeDataString(filtro.Tipo ?? "")}&buscar={Uri.EscapeDataString(filtro.Buscar ?? "")}&pagina={pagina}&pageSize={filtro.PageSize}";
+}
+
+<section class="page-header">
+    <div>
+        <h2>Bandeja de recordatorios</h2>
+        <p class="text-muted">Revisa, edita y envía avisos de pagos, vencimientos y renovaciones.</p>
+    </div>
+    <form method="post" asp-action="Generar">
+        @Html.AntiForgeryToken()
+        <button type="submit" class="btn btn-primary">Generar pendientes</button>
+    </form>
+</section>
+
+@if (TempData["Mensaje"] != null)
+{
+    <div class="alert alert-success">@TempData["Mensaje"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<section class="grid kpi-grid mb-4">
+    <article class="card metric-card accent-amber">
+        <span class="label">Pendientes</span>
+        <p class="value">@(stats?.Pendientes ?? 0)</p>
+        <p class="hint">Listos para revisar</p>
+    </article>
+    <article class="card metric-card accent-green">
+        <span class="label">Enviados</span>
+        <p class="value">@(stats?.Enviados ?? 0)</p>
+        <p class="hint">Comunicados al cliente</p>
+    </article>
+    <article class="card metric-card accent-red">
+        <span class="label">Errores</span>
+        <p class="value">@(stats?.Errores ?? 0)</p>
+        <p class="hint">Requieren revisión</p>
+    </article>
+    <article class="card metric-card accent-slate">
+        <span class="label">Descartados</span>
+        <p class="value">@(stats?.Descartados ?? 0)</p>
+        <p class="hint">No se enviarán</p>
+    </article>
+</section>
+
+<section class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="filter-bar">
+            <div>
+                <label>Estado</label>
+                <select name="estado" class="form-select">
+                    <option value="" selected="@(string.IsNullOrWhiteSpace(filtro.Estado))">Todos</option>
+                    <option value="PENDIENTE" selected="@(filtro.Estado == "PENDIENTE")">Pendientes</option>
+                    <option value="ERROR" selected="@(filtro.Estado == "ERROR")">Errores</option>
+                    <option value="ENVIADO" selected="@(filtro.Estado == "ENVIADO")">Enviados</option>
+                    <option value="DESCARTADO" selected="@(filtro.Estado == "DESCARTADO")">Descartados</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Tipo</label>
+                <select name="tipo" class="form-select">
+                    <option value="">Todos</option>
+                    <option value="PAGO" selected="@(filtro.Tipo == "PAGO")">Pago</option>
+                    <option value="RENOVACION" selected="@(filtro.Tipo == "RENOVACION")">Renovación</option>
+                    <option value="VENCIMIENTO" selected="@(filtro.Tipo == "VENCIMIENTO")">Vencimiento</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Buscar</label>
+                <input name="buscar" value="@filtro.Buscar" class="form-control" placeholder="Cliente, póliza, teléfono..." />
+            </div>
+
+            <div>
+                <label>Por página</label>
+                <select name="pageSize" class="form-select">
+                    <option value="25" selected="@(filtro.PageSize == 25)">25</option>
+                    <option value="50" selected="@(filtro.PageSize == 50)">50</option>
+                    <option value="100" selected="@(filtro.PageSize == 100)">100</option>
+                </select>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">Aplicar</button>
+                <a href="/Recordatorios" class="btn btn-outline-primary">Limpiar</a>
+            </div>
+        </form>
+
+        @if (Model.Tipos.Any())
+        {
+            <div class="type-summary">
+                @foreach (var tipo in Model.Tipos)
+                {
+                    <a href="/Recordatorios?estado=@filtro.Estado&tipo=@tipo.Tipo" class="badge bg-primary">@tipo.Tipo: @tipo.Total</a>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-header section-header">
+        <div>
+            <h3>Mensajes en bandeja</h3>
+            <p class="text-muted mb-0">@Model.Total resultado(s), página @filtro.Pagina de @Model.TotalPaginas.</p>
+        </div>
+    </div>
+    <div class="card-body table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Cliente</th>
+                    <th>Póliza</th>
+                    <th>Fecha</th>
+                    <th>Mensaje</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (Model.Items.Any())
+            {
+                foreach (var item in Model.Items)
+                {
+                    var badge = item.Estado switch
+                    {
+                        "ENVIADO" => "bg-success",
+                        "ERROR" => "bg-danger",
+                        "DESCARTADO" => "bg-secondary",
+                        _ => "bg-warning"
+                    };
+
+                    <tr>
+                        <td>
+                            <span class="badge bg-primary">@item.Tipo</span><br />
+                            <small class="text-muted">@item.Referencia</small>
+                        </td>
+                        <td>
+                            <strong>@item.Cliente</strong><br />
+                            <small class="text-muted">@item.Telefono</small>
+                        </td>
+                        <td>
+                            @item.NumeroPoliza<br />
+                            <small class="text-muted">@item.Aseguradora @item.Ramo</small>
+                        </td>
+                        <td>@item.FechaObjetivo?.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <strong>@item.Asunto</strong><br />
+                            <small class="text-muted">@Truncar(item.Mensaje, 100)</small>
+                        </td>
+                        <td>
+                            <span class="badge @badge">@item.Estado</span>
+                            @if (!string.IsNullOrWhiteSpace(item.Error))
+                            {
+                                <br /><small class="text-danger">@Truncar(item.Error, 80)</small>
+                            }
+                        </td>
+                        <td>
+                            <div class="d-flex flex-column gap-1">
+                                <a href="/Recordatorios/Editar/@item.Id" class="btn btn-sm btn-outline-primary">Revisar</a>
+                                @if (item.Estado == "PENDIENTE" || item.Estado == "ERROR")
+                                {
+                                    <form method="post" asp-action="Enviar">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-success w-100">Enviar</button>
+                                    </form>
+                                    <form method="post" asp-action="Descartar">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">Descartar</button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="7" class="text-center text-muted">No hay recordatorios con estos filtros.</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card-footer pager">
+        <a class="btn btn-sm btn-outline-primary @(filtro.Pagina <= 1 ? "disabled" : "")" href="@Query(Math.Max(1, filtro.Pagina - 1))">Anterior</a>
+        <span>Página @filtro.Pagina de @Model.TotalPaginas</span>
+        <a class="btn btn-sm btn-outline-primary @(filtro.Pagina >= Model.TotalPaginas ? "disabled" : "")" href="@Query(Math.Min(Model.TotalPaginas, filtro.Pagina + 1))">Siguiente</a>
+    </div>
+</section>
+
+@functions {
+    private static string Truncar(string? value, int max)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Length <= max ? value : value.Substring(0, max) + "...";
+    }
+}
