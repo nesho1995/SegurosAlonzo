@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileUp } from 'lucide-react'
 import { getPagos, registrarPagoCuota } from '../api/pagosApi'
 import { StatusPill } from '../components/Badge'
@@ -9,6 +9,8 @@ import { PanelTitle, Toolbar } from '../components/FormControls'
 import { PageHeader } from '../components/Topbar'
 import { Metric } from '../components/StatCard'
 import { DocumentosPanel } from '../components/DocumentosPanel'
+import { AccordionSection } from '../components/AccordionSection'
+import { notify } from '../components/ToastHost'
 import type { Payment, PaymentsResponse } from '../types/pagos'
 import { compactMeta, dateFmt, moneySafe } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
@@ -20,9 +22,11 @@ export function PaymentsView() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [selectedAction, setSelectedAction] = useState<'pago' | 'comprobante' | 'docs'>('pago')
   const [paymentForm, setPaymentForm] = useState({ monto: '', fechaPago: '', metodoPago: 'TRANSFERENCIA', documentoId: '', numeroRecibo: '', referenciaBanco: '', observaciones: '' })
   const [message, setMessage] = useState<string | null>(null)
   const [hideList, setHideList] = useState(false)
+  const paymentPanelRef = useRef<HTMLElement | null>(null)
   const saldoSeleccionado = selectedPayment ? Math.max(0, Number(selectedPayment.monto || 0) - Number(selectedPayment.montoPagado || 0)) : 0
 
   async function load() {
@@ -60,17 +64,22 @@ export function PaymentsView() {
         observaciones: paymentForm.observaciones || undefined,
       })
       setMessage('Pago registrado.')
+      notify('Pago registrado correctamente.', 'success')
       setPaymentForm({ monto: '', fechaPago: '', metodoPago: 'TRANSFERENCIA', documentoId: '', numeroRecibo: '', referenciaBanco: '', observaciones: '' })
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.')
+      const text = err instanceof Error ? err.message : 'Error inesperado.'
+      setError(text)
+      notify(text, 'error')
     }
   }
 
-  function selectPayment(item: Payment) {
+  function selectPayment(item: Payment, action: 'pago' | 'comprobante' | 'docs' = 'pago') {
     const saldo = Math.max(0, Number(item.monto || 0) - Number(item.montoPagado || 0))
     setSelectedPayment(item)
+    setSelectedAction(action)
     setPaymentForm((current) => ({ ...current, monto: saldo > 0 ? String(saldo) : current.monto }))
+    window.setTimeout(() => paymentPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
   useEffect(() => {
@@ -145,34 +154,41 @@ export function PaymentsView() {
                 item.metodoPago || 'Sin pago',
                 item.referenciaBanco || item.numeroRecibo || 'Sin referencia',
                 <div className="table-actions">
-                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><CheckCircle2 size={16} />Registrar pago</button>
-                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><FileUp size={16} />Comprobante</button>
-                  <button className="icon-button secondary" onClick={() => selectPayment(item)}><Eye size={16} />Ver docs</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item, 'pago')}><CheckCircle2 size={16} />Registrar pago</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item, 'comprobante')}><FileUp size={16} />Comprobante</button>
+                  <button className="icon-button secondary" onClick={() => selectPayment(item, 'docs')}><Eye size={16} />Ver docs</button>
                 </div>,
               ])}
             />
             {data.items.length === 0 && <div className="empty">No hay cuotas para el filtro seleccionado.</div>}
           </article>}
           {selectedPayment && (
-            <article className="panel mt-panel">
-              <PanelTitle title="Pago y comprobantes" subtitle={`${selectedPayment.cliente} / cuota ${selectedPayment.numeroCuota}`} />
+            <article className="panel mt-panel" ref={paymentPanelRef}>
+              <PanelTitle
+                title={selectedAction === 'pago' ? 'Registrar pago' : selectedAction === 'comprobante' ? 'Subir comprobante' : 'Documentos del pago'}
+                subtitle={`${selectedPayment.cliente} / cuota ${selectedPayment.numeroCuota}`}
+              />
               <div className="info-grid compact">
                 <div className="info-item"><span>Monto cuota</span><strong>{moneySafe(selectedPayment.monto)}</strong></div>
                 <div className="info-item"><span>Pagado</span><strong>{moneySafe(selectedPayment.montoPagado)}</strong></div>
                 <div className="info-item"><span>Saldo</span><strong>{moneySafe(saldoSeleccionado)}</strong></div>
                 <div className="info-item"><span>Estado</span><strong>{statusLabel(selectedPayment.estado)}</strong></div>
               </div>
-              <div className="form-grid compact-form">
-                <label className="field"><span>Monto</span><input type="number" value={paymentForm.monto} onChange={(event) => setPaymentForm({ ...paymentForm, monto: event.target.value })} /></label>
-                <label className="field"><span>Fecha pago</span><input type="date" value={paymentForm.fechaPago} onChange={(event) => setPaymentForm({ ...paymentForm, fechaPago: event.target.value })} /></label>
-                <label className="field"><span>Metodo</span><select value={paymentForm.metodoPago} onChange={(event) => setPaymentForm({ ...paymentForm, metodoPago: event.target.value })}><option>TRANSFERENCIA</option><option>DEBITO</option><option>EFECTIVO</option><option>TARJETA</option><option>OTRO</option></select></label>
-                <label className="field"><span>Documento ID</span><input type="number" value={paymentForm.documentoId} onChange={(event) => setPaymentForm({ ...paymentForm, documentoId: event.target.value })} /></label>
-                <label className="field"><span>Recibo</span><input value={paymentForm.numeroRecibo} onChange={(event) => setPaymentForm({ ...paymentForm, numeroRecibo: event.target.value })} /></label>
-                <label className="field"><span>Referencia</span><input value={paymentForm.referenciaBanco} onChange={(event) => setPaymentForm({ ...paymentForm, referenciaBanco: event.target.value })} /></label>
-                <label className="wide-field"><span>Observaciones</span><textarea value={paymentForm.observaciones} onChange={(event) => setPaymentForm({ ...paymentForm, observaciones: event.target.value })} /></label>
-                <div className="form-actions wide-field"><button className="primary-button" onClick={() => void registerPayment()}>Registrar pago</button></div>
-              </div>
-              <DocumentosPanel entidadTipo="PAGO" entidadId={selectedPayment.id} />
+              <AccordionSection title="Datos del pago" subtitle="Registra abonos, recibos y referencias bancarias." defaultOpen={selectedAction === 'pago'}>
+                <div className="form-grid compact-form">
+                  <label className="field"><span>Monto</span><input type="number" value={paymentForm.monto} onChange={(event) => setPaymentForm({ ...paymentForm, monto: event.target.value })} /></label>
+                  <label className="field"><span>Fecha pago</span><input type="date" value={paymentForm.fechaPago} onChange={(event) => setPaymentForm({ ...paymentForm, fechaPago: event.target.value })} /></label>
+                  <label className="field"><span>Metodo</span><select value={paymentForm.metodoPago} onChange={(event) => setPaymentForm({ ...paymentForm, metodoPago: event.target.value })}><option>TRANSFERENCIA</option><option>DEBITO</option><option>EFECTIVO</option><option>TARJETA</option><option>OTRO</option></select></label>
+                  <label className="field"><span>Documento ID</span><input type="number" value={paymentForm.documentoId} onChange={(event) => setPaymentForm({ ...paymentForm, documentoId: event.target.value })} /></label>
+                  <label className="field"><span>Recibo</span><input value={paymentForm.numeroRecibo} onChange={(event) => setPaymentForm({ ...paymentForm, numeroRecibo: event.target.value })} /></label>
+                  <label className="field"><span>Referencia</span><input value={paymentForm.referenciaBanco} onChange={(event) => setPaymentForm({ ...paymentForm, referenciaBanco: event.target.value })} /></label>
+                  <label className="wide-field"><span>Observaciones</span><textarea value={paymentForm.observaciones} onChange={(event) => setPaymentForm({ ...paymentForm, observaciones: event.target.value })} /></label>
+                  <div className="form-actions wide-field"><button className="primary-button" onClick={() => void registerPayment()}>Registrar pago</button></div>
+                </div>
+              </AccordionSection>
+              <AccordionSection title="Comprobantes y documentos" subtitle="Archivos asociados a esta cuota de pago." defaultOpen={selectedAction !== 'pago'}>
+                <DocumentosPanel entidadTipo="PAGO" entidadId={selectedPayment.id} compact />
+              </AccordionSection>
             </article>
           )}
         </>

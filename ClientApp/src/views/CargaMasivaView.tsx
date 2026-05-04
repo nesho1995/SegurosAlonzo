@@ -161,7 +161,7 @@ export function BulkHelpView() {
       {/* ── Modal vista ampliada ─────────────────────────────────── */}
       {expandedPreview && carteraPreview && (
         <div className="preview-modal" role="dialog" aria-modal="true" onClick={(e) => e.target === e.currentTarget && setExpandedPreview(false)}>
-          {/* Botón cerrar flotante — siempre visible sobre el overlay */}
+          {/* Botón cerrar flotante — siempre visible */}
           <button className="preview-modal-close" onClick={() => setExpandedPreview(false)} aria-label="Cerrar">
             <X size={16} />Cerrar
           </button>

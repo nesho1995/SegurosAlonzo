@@ -18,6 +18,29 @@ public class DocumentoStorageService
         ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt", ".doc", ".docx", ".xls", ".xlsx"
     };
 
+    private static readonly Dictionary<string, string[]> MimePermitidosPorExtension = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = ["application/pdf"],
+        [".jpg"] = ["image/jpeg"],
+        [".jpeg"] = ["image/jpeg"],
+        [".png"] = ["image/png"],
+        [".webp"] = ["image/webp"],
+        [".txt"] = ["text/plain"],
+        [".doc"] = ["application/msword", "application/octet-stream"],
+        [".docx"] = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/octet-stream"],
+        [".xls"] = ["application/vnd.ms-excel", "application/octet-stream"],
+        [".xlsx"] = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"]
+    };
+
+    private static readonly Dictionary<string, string> CarpetasPorEntidad = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CLIENTE"] = "clientes",
+        ["POLIZA"] = "polizas",
+        ["CUOTA"] = "cuotas",
+        ["PAGO"] = "pagos",
+        ["RECLAMO"] = "reclamos"
+    };
+
     private readonly IWebHostEnvironment _environment;
     private readonly DocumentoRepository _documentos;
     private readonly AuditoriaService _auditoria;
@@ -43,16 +66,19 @@ public class DocumentoStorageService
         var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
         var nombreOriginal = Path.GetFileName(archivo.FileName);
         var tipo = string.IsNullOrWhiteSpace(tipoDocumento) ? "OTRO" : tipoDocumento.Trim().ToUpperInvariant();
-        var baseFolder = _configuration["Documentos:CarpetaBase"] ?? Path.Combine("Uploads", "Documentos");
-        var prefix = RegexSafe(tipo.ToLowerInvariant());
-        var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
-        var token = Guid.NewGuid().ToString("N")[..8];
-        var nombreGuardado = $"{prefix}_{stamp}_{token}{extension}";
-        var relativeFolder = Path.Combine(baseFolder, entidadTipo.ToUpperInvariant(), entidadId.ToString());
+        var baseFolder = CleanRelativeRoot(_configuration["Documentos:CarpetaBase"] ?? "storage");
+        var folderEntidad = CarpetasPorEntidad[entidadTipo];
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var token = Guid.NewGuid().ToString("N");
+        var nombreLimpio = SafeFileName(Path.GetFileNameWithoutExtension(nombreOriginal));
+        var nombreGuardado = $"{stamp}_{token}_{nombreLimpio}{extension}";
+        var relativeFolder = Path.Combine(baseFolder, folderEntidad, entidadId.ToString());
         var absoluteFolder = Path.Combine(_environment.ContentRootPath, relativeFolder);
+        EnsureInsideContentRoot(absoluteFolder);
         Directory.CreateDirectory(absoluteFolder);
 
         var absolutePath = Path.Combine(absoluteFolder, nombreGuardado);
+        EnsureInsideContentRoot(absolutePath);
         await using (var stream = new FileStream(absolutePath, FileMode.CreateNew))
         {
             await archivo.CopyToAsync(stream);
@@ -94,6 +120,7 @@ public class DocumentoStorageService
         if (safeRelative.Contains("..", StringComparison.Ordinal))
             throw new InvalidOperationException("Ruta invalida.");
         var absolutePath = Path.Combine(_environment.ContentRootPath, safeRelative);
+        EnsureInsideContentRoot(absolutePath);
         if (!File.Exists(absolutePath))
             throw new FileNotFoundException("El archivo no esta disponible.");
 
@@ -109,6 +136,7 @@ public class DocumentoStorageService
         if (safeRelative.Contains("..", StringComparison.Ordinal))
             throw new InvalidOperationException("Ruta invalida.");
         var absolutePath = Path.Combine(_environment.ContentRootPath, safeRelative);
+        EnsureInsideContentRoot(absolutePath);
         await _documentos.DeleteAsync(id);
 
         if (File.Exists(absolutePath))
@@ -138,9 +166,12 @@ public class DocumentoStorageService
             throw new InvalidOperationException($"El archivo supera el limite permitido de {configuredMax / (1024 * 1024)} MB.");
         }
 
-        var extension = Path.GetExtension(archivo.FileName);
+        var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
         if (!GetAllowedExtensions().Contains(extension))
             throw new InvalidOperationException("Solo se permiten archivos PDF, JPG, JPEG, PNG, WEBP, TXT, DOC, DOCX, XLS y XLSX.");
+
+        if (!MimeLooksValid(extension, archivo.ContentType))
+            throw new InvalidOperationException("El tipo de archivo no coincide con la extension.");
     }
 
     private static string NormalizarEntidad(string value)
@@ -148,10 +179,42 @@ public class DocumentoStorageService
         return (value ?? "").Trim().ToUpperInvariant();
     }
 
-    private static string RegexSafe(string value)
+    private static string SafeFileName(string value)
     {
-        var cleaned = new string((value ?? "archivo").Where(char.IsLetterOrDigit).ToArray());
-        return string.IsNullOrWhiteSpace(cleaned) ? "archivo" : cleaned;
+        var cleaned = new string((value ?? "archivo")
+            .Normalize()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '_')
+            .ToArray());
+        cleaned = string.Join("_", cleaned.Split('_', StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return "archivo";
+        return cleaned.Length > 80 ? cleaned[..80] : cleaned;
+    }
+
+    private static string CleanRelativeRoot(string value)
+    {
+        var clean = (value ?? "storage").Trim().Replace("\\", "/").Trim('/');
+        if (string.IsNullOrWhiteSpace(clean) || clean.Contains("..", StringComparison.Ordinal) || Path.IsPathRooted(clean))
+            return "storage";
+        return clean;
+    }
+
+    private void EnsureInsideContentRoot(string path)
+    {
+        var root = Path.GetFullPath(_environment.ContentRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var target = Path.GetFullPath(path);
+        if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Ruta fuera del almacenamiento permitido.");
+    }
+
+    private static bool MimeLooksValid(string extension, string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType) || contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return MimePermitidosPorExtension.TryGetValue(extension, out var allowed)
+               && allowed.Contains(contentType.Trim(), StringComparer.OrdinalIgnoreCase);
     }
 
     private static string ComputeSha256(string filePath)

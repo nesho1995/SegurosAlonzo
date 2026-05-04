@@ -522,7 +522,7 @@
 
 .table-wrap {
   width: 100%;
-  overflow-x: auto;
+  overflow: auto;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
 }
@@ -548,6 +548,9 @@ td {
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   color: #607177;
   font-size: 12px;
   font-weight: 900;
@@ -559,12 +562,140 @@ th {
 .col-direccion { min-width: 260px; }
 .col-ciudad { min-width: 150px; }
 .col-largo { min-width: 220px; overflow-wrap: anywhere; }
-.col-acciones { width: 150px; min-width: 150px; white-space: nowrap; }
+.col-acciones {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  width: 170px;
+  min-width: 170px;
+  white-space: nowrap;
+  background: #fff;
+  box-shadow: -8px 0 14px rgba(23, 33, 38, 0.04);
+}
+
+th.col-acciones {
+  z-index: 3;
+  background: #f8fbfa;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
 
 .state-card,
 .empty {
   padding: 24px;
   color: #607177;
+}
+
+.toast-stack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9999;
+  display: grid;
+  gap: 10px;
+  width: min(420px, calc(100vw - 36px));
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #d8e4e0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(23, 33, 38, 0.16);
+  color: #172126;
+}
+
+.toast span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.toast button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.toast-success svg { color: #15803d; }
+.toast-error svg { color: #b91c1c; }
+.toast-info svg { color: #2563eb; }
+
+.accordion-section {
+  margin: 14px 18px;
+  border: 1px solid #d8e4e0;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.accordion-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f8fbfa;
+  cursor: pointer;
+  list-style: none;
+}
+
+.accordion-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion-section summary strong,
+.accordion-section summary small {
+  display: block;
+}
+
+.accordion-section summary small {
+  margin-top: 3px;
+  color: #607177;
+}
+
+.accordion-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #607177;
+}
+
+.accordion-section[open] .accordion-actions > svg {
+  transform: rotate(180deg);
+}
+
+.accordion-body {
+  padding: 16px;
+}
+
+.confirm-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.confirm-dialog-body {
+  padding: 18px;
+  color: #334155;
+}
+
+.confirm-dialog-actions {
+  justify-content: flex-end;
+  padding: 0 18px 18px;
 }
 
 .state-card.error {
@@ -1654,6 +1785,9 @@ th {
   border-bottom: 0;
 }
 
+.preview-modal-head {
+  align-items: center;
+}
 .preview-modal-close {
   position: fixed;
   top: 12px;

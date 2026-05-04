@@ -124,6 +124,9 @@ public class DocumentoRepository
                 ADD COLUMN IF NOT EXISTS ruta VARCHAR(500) NULL,
                 ADD COLUMN IF NOT EXISTS usuario_id INT NULL,
                 ADD COLUMN IF NOT EXISTS `tamaño` BIGINT NULL,
-                ADD COLUMN IF NOT EXISTS activo TINYINT(1) NOT NULL DEFAULT 1;");
+                ADD COLUMN IF NOT EXISTS activo TINYINT(1) NOT NULL DEFAULT 1;
+
+            CREATE INDEX IF NOT EXISTS ix_documentos_entidad_activo ON documentos (entidad_tipo, entidad_id, activo, fecha_subida);
+            CREATE INDEX IF NOT EXISTS ix_documentos_hash ON documentos (hash_archivo);");
     }
 }

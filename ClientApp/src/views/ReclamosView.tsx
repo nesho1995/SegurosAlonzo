@@ -19,6 +19,8 @@ import { ErrorCard } from '../components/ErrorAlert'
 import { PanelTitle, Toolbar } from '../components/FormControls'
 import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
+import { AccordionSection } from '../components/AccordionSection'
+import { notify } from '../components/ToastHost'
 import type { ClaimChecklistItem, ClaimItem, ClaimsResponse } from '../types/reclamos'
 import { compactMeta, dateFmt } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
@@ -111,10 +113,14 @@ export function ReclamosView() {
     try {
       const result = await action()
       const maybeResponse = result as { ok?: boolean; response?: string } | null
-      setActionMessage(maybeResponse?.ok === false ? maybeResponse.response || 'La accion no se completo.' : success)
+      const message = maybeResponse?.ok === false ? maybeResponse.response || 'La accion no se completo.' : success
+      setActionMessage(message)
+      notify(message, maybeResponse?.ok === false ? 'error' : 'success')
       await refreshSelected()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.')
+      const text = err instanceof Error ? err.message : 'Error inesperado.'
+      setError(text)
+      notify(text, 'error')
     } finally {
       setActionBusy(false)
     }
@@ -181,41 +187,45 @@ export function ReclamosView() {
                     <Send size={16} />Recordatorio
                   </button>
                 </div>
-                <div className="legacy-documents">
-                  <h3>Checklist original</h3>
-                  {documentosPendientes.length === 0 ? (
-                    <div className="empty">No hay requisitos pendientes registrados.</div>
-                  ) : documentosPendientes.map((doc) => (
-                    <label className="check-field" key={doc.id}>
-                      <input
-                        type="checkbox"
-                        checked={doc.recibido}
-                        disabled={actionBusy}
-                        onChange={(event) => void runAction(() => updateReclamoDocumento(selected.id, doc.id, event.target.checked), 'Documento actualizado.')}
-                      />
-                      {doc.documento}
-                    </label>
-                  ))}
-                </div>
-                <div className="inline-alert warning">Checklist: {checklist.length} requisitos / pendientes: {checklistPendientes}</div>
-                {checklist.length > 0 && (
-                  <div className="mini-grid">
-                    {checklist.map((req) => (
-                      <StatusPill key={req.id} text={`${req.tipoDocumento}${req.requerido ? ' *' : ''}`} tone={req.requerido ? 'warning' : 'info'} />
+                <AccordionSection title="Documentos requeridos" subtitle={`${checklistPendientes} pendientes por revisar.`}>
+                  <div className="legacy-documents">
+                    {documentosPendientes.length === 0 ? (
+                      <div className="empty">No hay requisitos pendientes registrados.</div>
+                    ) : documentosPendientes.map((doc) => (
+                      <label className="check-field" key={doc.id}>
+                        <input
+                          type="checkbox"
+                          checked={doc.recibido}
+                          disabled={actionBusy}
+                          onChange={(event) => void runAction(() => updateReclamoDocumento(selected.id, doc.id, event.target.checked), 'Documento actualizado.')}
+                        />
+                        {doc.documento}
+                      </label>
                     ))}
                   </div>
-                )}
-                <DocumentosPanel entidadTipo="RECLAMO" entidadId={selected.id} />
-                <div className="insurer-box">
-                  <h3>Enviar a aseguradora</h3>
-                  <label className="field compact-field">
-                    <span>Correo aseguradora</span>
-                    <input value={correoAseguradora} onChange={(event) => setCorreoAseguradora(event.target.value)} placeholder="correo@aseguradora.com" />
-                  </label>
-                  <button className="icon-button" disabled={actionBusy} onClick={() => void runAction(() => enviarDocumentosAseguradora(selected.id, correoAseguradora), 'Documentos enviados a la aseguradora.')}>
-                    <Send size={16} />Enviar adjuntos
-                  </button>
-                </div>
+                  <div className="inline-alert warning">Checklist: {checklist.length} requisitos / pendientes: {checklistPendientes}</div>
+                  {checklist.length > 0 && (
+                    <div className="mini-grid">
+                      {checklist.map((req) => (
+                        <StatusPill key={req.id} text={`${req.tipoDocumento}${req.requerido ? ' *' : ''}`} tone={req.requerido ? 'warning' : 'info'} />
+                      ))}
+                    </div>
+                  )}
+                </AccordionSection>
+                <AccordionSection title="Expediente digital" subtitle="Documentos asociados al reclamo.">
+                  <DocumentosPanel entidadTipo="RECLAMO" entidadId={selected.id} />
+                </AccordionSection>
+                <AccordionSection title="Envio a aseguradora" subtitle="Comparte documentos adjuntos por correo.">
+                  <div className="insurer-box">
+                    <label className="field compact-field">
+                      <span>Correo aseguradora</span>
+                      <input value={correoAseguradora} onChange={(event) => setCorreoAseguradora(event.target.value)} placeholder="correo@aseguradora.com" />
+                    </label>
+                    <button className="icon-button" disabled={actionBusy} onClick={() => void runAction(() => enviarDocumentosAseguradora(selected.id, correoAseguradora), 'Documentos enviados a la aseguradora.')}>
+                      <Send size={16} />Enviar adjuntos
+                    </button>
+                  </div>
+                </AccordionSection>
               </>
             ) : <div className="empty">Selecciona un reclamo para ver documentos.</div>}
           </article>

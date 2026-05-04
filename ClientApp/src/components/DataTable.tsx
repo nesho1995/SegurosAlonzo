@@ -10,8 +10,8 @@ function columnClass(header: string) {
   return ''
 }
 
-export function DataTable({ headers, rows }: { headers: string[]; rows: Array<Array<ReactNode>> }) {
+export function DataTable({ headers, rows, maxHeight = '520px' }: { headers: string[]; rows: Array<Array<ReactNode>>; maxHeight?: string }) {
   if (rows.length === 0) return <div className="empty">No hay datos para mostrar.</div>
-  return (<div className="table-responsive table-wrap"><table className="data-table"><thead><tr>{headers.map((header) => <th className={columnClass(header)} key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => (<tr key={rowIndex}>{row.map((cell, cellIndex) => <td className={columnClass(headers[cellIndex])} data-label={headers[cellIndex]} key={cellIndex}>{cell}</td>)}</tr>))}</tbody></table></div>)
+  return (<div className="table-responsive table-wrap" style={{ maxHeight }}><table className="data-table"><thead><tr>{headers.map((header) => <th className={columnClass(header)} key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => (<tr key={rowIndex}>{row.map((cell, cellIndex) => <td className={columnClass(headers[cellIndex])} data-label={headers[cellIndex]} key={cellIndex}>{cell}</td>)}</tr>))}</tbody></table></div>)
 }
 export function CellTitle({ title, subtitle }: { title: string; subtitle?: string }) { return (<div className="cell-title"><strong>{title}</strong>{subtitle && <span>{subtitle}</span>}</div>) }

@@ -30,6 +30,7 @@ import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 import { GlobalSearch } from './components/GlobalSearch'
 import { CotizacionesView } from './views/CotizacionesView'
 import { CotizacionRevisionView } from './views/CotizacionRevisionView'
+import { ToastHost } from './components/ToastHost'
 
 const navItems = [
   // Inicio
@@ -62,6 +63,7 @@ function App() {
   return (
     <AuthProvider>
       <AppRouter />
+      <ToastHost />
     </AuthProvider>
   )
 }

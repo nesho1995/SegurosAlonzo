@@ -133,7 +133,7 @@ public class CarteraImportService
             var vehiculoId = await _repo.UpsertVehiculoAsync(vehiculo);
             var fechaInicio = ParseDate(row.GetClean("VIGENCIA")) ?? ParseDate(row.GetClean("FECHA INGRESO"));
             var cuotas = ResolveCuotas(row);
-            var montosCuotas = BuildCuotasMontos(row, cuotas);
+            var montosCuotas = BuildCuotasMontos(row, cuotas, contratanteId.HasValue);
 
             var poliza = new Poliza
             {
@@ -220,8 +220,17 @@ public class CarteraImportService
             else
                 polizasDuplicadas++;
 
-            if (cuotas > 0 && fechaInicio.HasValue)
+            if (contratanteId.HasValue)
+            {
+                await _repo.SyncFinancialGroupAsync(polizaId);
+                var masterPolizaId = await _repo.GetFinancialMasterPolizaIdAsync(polizaId);
+                if (cuotas > 0 && fechaInicio.HasValue && masterPolizaId == polizaId)
+                    await _repo.UpsertCuotasAsync(masterPolizaId, cuotas, fechaInicio.Value.Date, montosCuotas);
+            }
+            else if (cuotas > 0 && fechaInicio.HasValue)
+            {
                 await _repo.UpsertCuotasAsync(polizaId, cuotas, fechaInicio.Value.Date, montosCuotas);
+            }
 
             await AuditRowAsync(row, clienteId, cliente, poliza, sumaMedica, ramo);
         }
@@ -704,7 +713,7 @@ public class CarteraImportService
         }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
     }
 
-    private static IReadOnlyList<decimal?> BuildCuotasMontos(CarteraImportRowPreview row, int cuotas)
+    private static IReadOnlyList<decimal?> BuildCuotasMontos(CarteraImportRowPreview row, int cuotas, bool aplicaGrupoFinanciero)
     {
         var result = Enumerable.Repeat<decimal?>(null, 12).ToArray();
         cuotas = Math.Clamp(cuotas, 0, 12);
@@ -717,6 +726,8 @@ public class CarteraImportService
 
         if (explicitValues.Any(x => x.HasValue))
         {
+            // Usar el monto individual de cada cuota tal como viene en el archivo,
+            // incluso para polizas de grupo financiero (PRESTADITO, banco, etc.).
             for (var i = 0; i < cuotas; i++)
                 result[i] = explicitValues[i] ?? 0m;
             return result;

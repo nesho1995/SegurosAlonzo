@@ -34,9 +34,9 @@ public class DocumentosApiController : ControllerBase
             await _auditoria.RegistrarAsync("SUBIR_DOCUMENTO", entidadTipo.Trim().ToUpperInvariant(), entidadId, $"Documento subido: {documento.NombreArchivoOriginal}.");
             return Ok(documento);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = "El documento no cumple las condiciones requeridas." });
+            return BadRequest(new { error = ex.Message });
         }
         catch
         {

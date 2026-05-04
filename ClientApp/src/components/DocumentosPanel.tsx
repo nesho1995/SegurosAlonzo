@@ -4,9 +4,11 @@ import { deleteDocumento, getDocumentos, uploadDocumento } from '../api/document
 import type { DocumentItem, EntityType } from '../types/documentos'
 import { dateFmt } from '../utils/formatters'
 import { useAuth } from '../hooks/useAuth'
+import { ConfirmDialog } from './ConfirmDialog'
+import { notify } from './ToastHost'
 
 const maxDocumentBytes = 5 * 1024 * 1024
-const allowedDocumentExtensions = ['pdf', 'jpg', 'jpeg', 'png']
+const allowedDocumentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'doc', 'docx', 'xls', 'xlsx']
 const documentTypes = ['POLIZA', 'IDENTIDAD', 'RTN', 'RECIBO', 'COMPROBANTE_TRANSFERENCIA', 'COMPROBANTE_DEBITO', 'FACTURA', 'FOTO_RECLAMO', 'COTIZACION_TALLER', 'INFORME_TALLER', 'FINIQUITO', 'LICENCIA', 'TARJETA_CIRCULACION', 'OTRO']
 
 export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { entidadTipo: EntityType; entidadId: number; compact?: boolean }) {
@@ -14,6 +16,9 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
   const [tipoDocumento, setTipoDocumento] = useState('OTRO')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [previewItem, setPreviewItem] = useState<DocumentItem | null>(null)
   const [previewText, setPreviewText] = useState<string>('')
@@ -44,26 +49,39 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
 
     setError(null)
     setMessage(null)
+    setUploading(true)
     try {
       await uploadDocumento(entidadTipo, entidadId, tipoDocumento, file)
+      notify('Documento subido correctamente.', 'success')
       setMessage('Documento subido correctamente.')
       if (inputRef.current) inputRef.current.value = ''
       setSelectedFileName('')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.')
+      const text = err instanceof Error ? err.message : 'Error inesperado.'
+      setError(text)
+      notify(text, 'error')
+    } finally {
+      setUploading(false)
     }
   }
 
-  async function remove(id: number) {
+  async function remove(item: DocumentItem) {
     setError(null)
     setMessage(null)
+    setDeleting(true)
     try {
-      await deleteDocumento(id)
+      await deleteDocumento(item.id)
+      notify('Documento eliminado.', 'success')
       setMessage('Documento eliminado.')
+      setDeleteTarget(null)
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.')
+      const text = err instanceof Error ? err.message : 'Error inesperado.'
+      setError(text)
+      notify(text, 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -132,7 +150,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
           }}
         >
           <Upload size={22} />
-          <strong>{compactMode ? 'Adjuntar comprobante' : 'Arrastra un archivo o seleccionalo'}</strong>
+          <strong>{uploading ? 'Subiendo archivo...' : compactMode ? 'Adjuntar comprobante' : 'Arrastra un archivo o seleccionalo'}</strong>
           {!compactMode && <span>No se exponen rutas internas del servidor.</span>}
           <div className="dropzone-picker">
             <button
@@ -147,7 +165,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
           <input
             ref={inputRef}
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.doc,.docx,.xls,.xlsx"
             onChange={(event) => {
               const file = event.target.files?.[0]
               setSelectedFileName(file?.name || '')
@@ -171,7 +189,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
               <div className="table-actions">
                 <button className="icon-button secondary" onClick={() => { setPreviewText(''); setPreviewItem(item) }}><FileText size={16} />Preview</button>
                 <a className="icon-button secondary" href={item.descargarUrl} target="_blank" rel="noreferrer"><Download size={16} />Descargar</a>
-                {canDelete && <button className="icon-button danger-button" onClick={() => void remove(item.id)}><Trash2 size={16} />Eliminar</button>}
+                {canDelete && <button className="icon-button danger-button" onClick={() => setDeleteTarget(item)}><Trash2 size={16} />Eliminar</button>}
               </div>
             </div>
           ))
@@ -186,6 +204,16 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Eliminar documento"
+        message={deleteTarget ? `Se eliminara ${deleteTarget.nombreArchivoOriginal}. Esta accion requiere confirmacion.` : ''}
+        confirmText="Eliminar"
+        danger
+        busy={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && void remove(deleteTarget)}
+      />
     </section>
   )
 }
@@ -218,7 +246,7 @@ function validateDocumentFile(file: File | null | undefined) {
   if (file.size > maxDocumentBytes) return 'El archivo supera el limite permitido de 5 MB.'
 
   const extension = file.name.split('.').pop()?.toLowerCase() || ''
-  if (!allowedDocumentExtensions.includes(extension)) return 'Solo se permiten archivos PDF, JPG, JPEG o PNG.'
+  if (!allowedDocumentExtensions.includes(extension)) return 'Solo se permiten PDF, imagenes, Word, Excel o texto.'
 
   return null
 }

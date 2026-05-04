@@ -6,6 +6,16 @@ namespace ReclamosWhatsApp.Data;
 public class CarteraRepository
 {
     private readonly DbConnectionFactory _factory;
+    private const string FinancialKeySql = @"
+        CASE
+            WHEN p.cliente_contratante_id IS NOT NULL THEN CONCAT(
+                'FIN|', p.cliente_contratante_id, '|',
+                UPPER(TRIM(COALESCE(p.aseguradora,''))), '|',
+                UPPER(TRIM(COALESCE(p.numero_poliza,''))), '|',
+                UPPER(TRIM(COALESCE(p.ramo,'')))
+            )
+            ELSE CONCAT('POL|', p.id)
+        END";
 
     public CarteraRepository(DbConnectionFactory factory)
     {
@@ -864,16 +874,23 @@ public class CarteraRepository
 
         var sql = $@"
             SELECT
-                (SELECT COUNT(*) FROM clientes c WHERE NOT (NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id) AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id))) TotalClientes,
-                (SELECT COUNT(*) FROM clientes c WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike) AND NOT (NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id) AND EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id))) ClientesActivos,
-                (SELECT COUNT(*) FROM ({Dedup()}) unicas) TotalPolizas,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1")}) unicas) PolizasActivas,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")}) unicas) PolizasPorVencer30,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)")}) unicas) PolizasPorVencer15,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)")}) unicas) PolizasPorVencer7,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.hasta < CURDATE()")}) unicas) PolizasVencidas,
-                (SELECT COUNT(*) FROM ({Dedup("p.activo = 1 AND p.estado_pago IN ('SIN_VALIDAR','PENDIENTE','MORA')")}) unicas) PagosPendientes,
-                (SELECT COALESCE(SUM(px.prima_total), 0) FROM polizas px WHERE px.id IN ({Dedup("p.activo = 1")})) PrimaTotalActiva;";
+                (SELECT COUNT(DISTINCT c.id) FROM clientes c WHERE (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)) TotalClientes,
+                (SELECT COUNT(DISTINCT c.id) FROM clientes c WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)) ClientesActivos,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {polizaWhere}) TotalPolizas,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1")}) PolizasActivas,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")}) PolizasPorVencer30,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 15 DAY)")}) PolizasPorVencer15,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)")}) PolizasPorVencer7,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta < CURDATE()")}) PolizasVencidas,
+                (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.estado_pago IN ('SIN_VALIDAR','PENDIENTE','MORA')")}) PagosPendientes,
+                (SELECT COALESCE(SUM(x.prima_total), 0)
+                 FROM (
+                    SELECT {FinancialKeySql} financial_key, MAX(p.prima_total) prima_total
+                    FROM polizas p
+                    INNER JOIN clientes c ON c.id = p.cliente_id
+                    {AppendWhere(polizaWhere, "p.activo = 1")}
+                    GROUP BY {FinancialKeySql}
+                 ) x) PrimaTotalActiva;";
 
         return await cn.QueryFirstAsync(sql, parameters);
     }
@@ -1128,6 +1145,46 @@ public class CarteraRepository
             WHERE id = @Id;";
 
         await cn.ExecuteAsync(sql, p);
+        if (p.ClienteContratanteId.HasValue)
+            await SyncFinancialGroupAsync(p.Id);
+    }
+
+    public async Task<int> GetFinancialMasterPolizaIdAsync(int polizaId)
+    {
+        using var cn = _factory.CreateConnection();
+        var master = await cn.ExecuteScalarAsync<int?>(@"
+            SELECT MIN(p2.id)
+            FROM polizas p
+            INNER JOIN polizas p2 ON p2.cliente_contratante_id = p.cliente_contratante_id
+                AND UPPER(TRIM(COALESCE(p2.aseguradora,''))) = UPPER(TRIM(COALESCE(p.aseguradora,'')))
+                AND UPPER(TRIM(COALESCE(p2.numero_poliza,''))) = UPPER(TRIM(COALESCE(p.numero_poliza,'')))
+                AND UPPER(TRIM(COALESCE(p2.ramo,''))) = UPPER(TRIM(COALESCE(p.ramo,'')))
+            WHERE p.id = @polizaId
+              AND p.cliente_contratante_id IS NOT NULL;", new { polizaId });
+
+        return master ?? polizaId;
+    }
+
+    public async Task SyncFinancialGroupAsync(int sourcePolizaId)
+    {
+        using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(@"
+            UPDATE polizas target
+            INNER JOIN polizas source ON source.id = @sourcePolizaId
+                AND source.cliente_contratante_id IS NOT NULL
+                AND target.cliente_contratante_id = source.cliente_contratante_id
+                AND UPPER(TRIM(COALESCE(target.aseguradora,''))) = UPPER(TRIM(COALESCE(source.aseguradora,'')))
+                AND UPPER(TRIM(COALESCE(target.numero_poliza,''))) = UPPER(TRIM(COALESCE(source.numero_poliza,'')))
+                AND UPPER(TRIM(COALESCE(target.ramo,''))) = UPPER(TRIM(COALESCE(source.ramo,'')))
+            SET target.prima_neta = source.prima_neta,
+                target.seguro_asiento = source.seguro_asiento,
+                target.prima_comercial = source.prima_comercial,
+                target.impuesto = source.impuesto,
+                target.gastos_emision = source.gastos_emision,
+                target.bomberos = source.bomberos,
+                target.prima_total = source.prima_total,
+                target.cuotas = source.cuotas,
+                target.forma_pago = source.forma_pago;", new { sourcePolizaId });
     }
 
     public async Task SetPolizaActivaAsync(int id, bool activo)
@@ -1318,23 +1375,40 @@ public class CarteraRepository
             cn.Open();
         using var tx = cn.BeginTransaction();
 
-        var polizaId = await cn.ExecuteScalarAsync<int?>(@"
-            SELECT poliza_id
+        var cuotaInfo = await cn.QueryFirstOrDefaultAsync<dynamic>(@"
+            SELECT poliza_id PolizaId, numero_cuota NumeroCuota
             FROM poliza_cuotas
             WHERE id = @cuotaId;", new { cuotaId }, tx);
-        if (!polizaId.HasValue)
+        if (cuotaInfo is null)
         {
             tx.Rollback();
             return false;
         }
 
-        await cn.ExecuteAsync(@"
-            UPDATE poliza_cuotas
-            SET monto = @monto
-            WHERE id = @cuotaId;", new { cuotaId, monto }, tx);
+        var polizaId = Convert.ToInt32(cuotaInfo.PolizaId);
+        var numeroCuota = Convert.ToInt32(cuotaInfo.NumeroCuota);
 
         await cn.ExecuteAsync(@"
             UPDATE poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id
+            INNER JOIN polizas source ON source.id = @polizaId
+            SET pc.monto = @monto
+            WHERE pc.numero_cuota = @numeroCuota
+              AND (
+                    pc.id = @cuotaId
+                    OR (
+                        source.cliente_contratante_id IS NOT NULL
+                        AND p.cliente_contratante_id = source.cliente_contratante_id
+                        AND UPPER(TRIM(COALESCE(p.aseguradora,''))) = UPPER(TRIM(COALESCE(source.aseguradora,'')))
+                        AND UPPER(TRIM(COALESCE(p.numero_poliza,''))) = UPPER(TRIM(COALESCE(source.numero_poliza,'')))
+                        AND UPPER(TRIM(COALESCE(p.ramo,''))) = UPPER(TRIM(COALESCE(source.ramo,'')))
+                    )
+              );", new { cuotaId, polizaId, numeroCuota, monto }, tx);
+
+        await cn.ExecuteAsync(@"
+            UPDATE poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id
+            INNER JOIN polizas source ON source.id = @polizaId
             LEFT JOIN (
                 SELECT cuota_id, COALESCE(SUM(monto),0) monto_pagado
                 FROM poliza_pagos
@@ -1348,9 +1422,19 @@ public class CarteraRepository
                     ELSE 'PENDIENTE'
                 END,
                 pc.fecha_pago = CASE WHEN COALESCE(pagos.monto_pagado,0) > 0 THEN IFNULL(pc.fecha_pago, CURDATE()) ELSE NULL END
-            WHERE pc.id = @cuotaId;", new { cuotaId }, tx);
+            WHERE pc.numero_cuota = @numeroCuota
+              AND (
+                    pc.id = @cuotaId
+                    OR (
+                        source.cliente_contratante_id IS NOT NULL
+                        AND p.cliente_contratante_id = source.cliente_contratante_id
+                        AND UPPER(TRIM(COALESCE(p.aseguradora,''))) = UPPER(TRIM(COALESCE(source.aseguradora,'')))
+                        AND UPPER(TRIM(COALESCE(p.numero_poliza,''))) = UPPER(TRIM(COALESCE(source.numero_poliza,'')))
+                        AND UPPER(TRIM(COALESCE(p.ramo,''))) = UPPER(TRIM(COALESCE(source.ramo,'')))
+                    )
+              );", new { cuotaId, polizaId, numeroCuota }, tx);
 
-        await RecalcularEstadoPolizaAsync(polizaId.Value, cn, tx);
+        await RecalcularEstadoPolizaAsync(polizaId, cn, tx);
         tx.Commit();
         return true;
     }

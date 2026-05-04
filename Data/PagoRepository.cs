@@ -6,6 +6,18 @@ namespace ReclamosWhatsApp.Data;
 public class PagoRepository
 {
     private readonly DbConnectionFactory _factory;
+    private const string FinancialMasterConditionSql = @"
+              AND (
+                    p.cliente_contratante_id IS NULL
+                    OR p.id = (
+                        SELECT MIN(p2.id)
+                        FROM polizas p2
+                        WHERE p2.cliente_contratante_id = p.cliente_contratante_id
+                          AND UPPER(TRIM(COALESCE(p2.aseguradora,''))) = UPPER(TRIM(COALESCE(p.aseguradora,'')))
+                          AND UPPER(TRIM(COALESCE(p2.numero_poliza,''))) = UPPER(TRIM(COALESCE(p.numero_poliza,'')))
+                          AND UPPER(TRIM(COALESCE(p2.ramo,''))) = UPPER(TRIM(COALESCE(p.ramo,'')))
+                    )
+              )";
 
     public PagoRepository(DbConnectionFactory factory)
     {
@@ -24,12 +36,13 @@ public class PagoRepository
                 prima_total PrimaTotal,
                 vigencia Vigencia,
                 hasta Hasta
-            FROM polizas
+            FROM polizas p
             WHERE activo = 1
               AND cuotas IS NOT NULL
               AND cuotas > 0
               AND prima_total IS NOT NULL
-              AND prima_total > 0;";
+              AND prima_total > 0
+              " + FinancialMasterConditionSql + @";";
 
         var polizas = await cn.QueryAsync<Poliza>(polizasSql);
         var creadas = 0;
@@ -99,6 +112,18 @@ public class PagoRepository
             where.Add("(c.nombre LIKE @buscar OR p.numero_poliza LIKE @buscar OR c.telefono LIKE @buscar)");
             parameters.Add("buscar", $"%{buscar.Trim()}%");
         }
+
+        where.Add(@"(
+            p.cliente_contratante_id IS NULL
+            OR p.id = (
+                SELECT MIN(p2.id)
+                FROM polizas p2
+                WHERE p2.cliente_contratante_id = p.cliente_contratante_id
+                  AND UPPER(TRIM(COALESCE(p2.aseguradora,''))) = UPPER(TRIM(COALESCE(p.aseguradora,'')))
+                  AND UPPER(TRIM(COALESCE(p2.numero_poliza,''))) = UPPER(TRIM(COALESCE(p.numero_poliza,'')))
+                  AND UPPER(TRIM(COALESCE(p2.ramo,''))) = UPPER(TRIM(COALESCE(p.ramo,'')))
+            )
+        )");
 
         var whereSql = where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
         parameters.Add("limit", pageSize);
@@ -210,6 +235,7 @@ public class PagoRepository
             INNER JOIN clientes c ON c.id = p.cliente_id
             LEFT JOIN poliza_cuotas pc ON pc.poliza_id = p.id
             WHERE p.activo = 1
+              " + FinancialMasterConditionSql + @"
             GROUP BY p.id, p.numero_poliza, c.nombre, p.cuotas, p.prima_total
             HAVING COUNT(pc.id) = 0
             ORDER BY c.nombre ASC, p.numero_poliza ASC
@@ -259,20 +285,37 @@ public class PagoRepository
             parameters.Add("hasta", hasta.Value.Date);
         }
 
-        where.Add("p.activo = 1");
-        var whereSql = "WHERE " + string.Join(" AND ", where);
+        where.Add(@"(
+            p.cliente_contratante_id IS NULL
+            OR p.id = (
+                SELECT MIN(p2.id)
+                FROM polizas p2
+                WHERE p2.cliente_contratante_id = p.cliente_contratante_id
+                  AND UPPER(TRIM(COALESCE(p2.aseguradora,''))) = UPPER(TRIM(COALESCE(p.aseguradora,'')))
+                  AND UPPER(TRIM(COALESCE(p2.numero_poliza,''))) = UPPER(TRIM(COALESCE(p.numero_poliza,'')))
+                  AND UPPER(TRIM(COALESCE(p2.ramo,''))) = UPPER(TRIM(COALESCE(p.ramo,'')))
+            )
+        )");
+
+        var whereSql = where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
         var sql = $@"
             SELECT
-                COALESCE(SUM(CASE WHEN pc.estado = 'PENDIENTE' THEN 1 ELSE 0 END), 0) Pendientes,
-                COALESCE(SUM(CASE WHEN pc.estado = 'VENCIDA' THEN 1 ELSE 0 END), 0) Vencidas,
-                COALESCE(SUM(CASE WHEN pc.estado = 'PAGADA' THEN 1 ELSE 0 END), 0) Pagadas,
-                COALESCE(SUM(CASE WHEN pc.estado = 'PARCIAL' THEN 1 ELSE 0 END), 0) Parciales,
-                COALESCE(SUM(CASE WHEN pc.estado IN ('PENDIENTE','VENCIDA') THEN pc.monto ELSE 0 END), 0) MontoPendiente,
-                COALESCE(SUM(CASE WHEN pc.estado = 'VENCIDA' THEN pc.monto ELSE 0 END), 0) MontoVencido
-            FROM poliza_cuotas pc
-            INNER JOIN polizas p ON p.id = pc.poliza_id
-            INNER JOIN clientes c ON c.id = p.cliente_id
-            {whereSql};";
+                COALESCE(SUM(CASE WHEN estado = 'PENDIENTE' THEN 1 ELSE 0 END), 0) Pendientes,
+                COALESCE(SUM(CASE WHEN estado = 'VENCIDA' THEN 1 ELSE 0 END), 0) Vencidas,
+                COALESCE(SUM(CASE WHEN estado = 'PAGADA' THEN 1 ELSE 0 END), 0) Pagadas,
+                COALESCE(SUM(CASE WHEN estado = 'PARCIAL' THEN 1 ELSE 0 END), 0) Parciales,
+                COALESCE(SUM(CASE WHEN estado IN ('PENDIENTE','VENCIDA','PARCIAL') THEN saldo ELSE 0 END), 0) MontoPendiente,
+                COALESCE(SUM(CASE WHEN estado = 'VENCIDA' THEN saldo ELSE 0 END), 0) MontoVencido
+            FROM (
+                SELECT
+                    pc.estado,
+                    pc.monto,
+                    GREATEST(pc.monto - COALESCE((SELECT SUM(pp.monto) FROM poliza_pagos pp WHERE pp.cuota_id = pc.id AND pp.activo = 1), 0), 0) saldo
+                FROM poliza_cuotas pc
+                INNER JOIN polizas p ON p.id = pc.poliza_id
+                INNER JOIN clientes c ON c.id = p.cliente_id
+                {whereSql}
+            ) cuotas_financieras;";
 
         return await cn.QueryFirstAsync(sql, parameters);
     }
@@ -291,7 +334,26 @@ public class PagoRepository
     public async Task<int> RegistrarPagoAsync(int cuotaId, PolizaPago pago)
     {
         using var cn = _factory.CreateConnection();
+        if (cn.State != System.Data.ConnectionState.Open)
+            cn.Open();
         using var tx = cn.BeginTransaction();
+
+        cuotaId = await cn.ExecuteScalarAsync<int>(@"
+            SELECT COALESCE(master_pc.id, pc.id)
+            FROM poliza_cuotas pc
+            INNER JOIN polizas p ON p.id = pc.poliza_id
+            LEFT JOIN polizas master_p ON master_p.id = (
+                SELECT MIN(p2.id)
+                FROM polizas p2
+                WHERE p.cliente_contratante_id IS NOT NULL
+                  AND p2.cliente_contratante_id = p.cliente_contratante_id
+                  AND UPPER(TRIM(COALESCE(p2.aseguradora,''))) = UPPER(TRIM(COALESCE(p.aseguradora,'')))
+                  AND UPPER(TRIM(COALESCE(p2.numero_poliza,''))) = UPPER(TRIM(COALESCE(p.numero_poliza,'')))
+                  AND UPPER(TRIM(COALESCE(p2.ramo,''))) = UPPER(TRIM(COALESCE(p.ramo,'')))
+            )
+            LEFT JOIN poliza_cuotas master_pc ON master_pc.poliza_id = master_p.id
+                AND master_pc.numero_cuota = pc.numero_cuota
+            WHERE pc.id = @cuotaId;", new { cuotaId }, tx);
 
         const string insertSql = @"
             INSERT INTO poliza_pagos
