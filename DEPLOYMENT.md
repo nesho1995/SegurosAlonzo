@@ -159,6 +159,16 @@ Editar con los valores reales:
     "MarkAsRead": false,
     "LookbackHours": 24
   },
+  "Smtp": {
+    "Enabled": true,
+    "Host": "smtp.gmail.com",
+    "Port": 587,
+    "UseSsl": false,
+    "User": "produccion@tucorreo.com",
+    "Password": "xxxx xxxx xxxx xxxx",
+    "From": "produccion@tucorreo.com",
+    "FromName": "Seguros Alonzo"
+  },
   "WhatsApp": {
     "Enabled": false,
     "GraphVersion": "v18.0",
@@ -191,6 +201,7 @@ Editar con los valores reales:
 |-------|-------------------|
 | `ConnectionStrings:Default` | El usuario/password que creaste en MariaDB |
 | `Email:Password` | Gmail → Cuenta → Seguridad → Contraseñas de aplicaciones |
+| `Smtp:Password` | Contraseña de aplicación de la cuenta que enviará documentos |
 | `WhatsApp:PhoneNumberId` | Meta Business Manager → WhatsApp → API Setup |
 | `WhatsApp:AccessToken` | Meta Business Manager → WhatsApp → API Setup → Token permanente |
 | `WhatsApp:WebhookVerifyToken` | Inventatelo tú (ej: `seguros_webhook_2024_xyz`) |

@@ -336,13 +336,18 @@ public class AppSettingsRepository
         };
     }
 
-    public async Task SaveReclamoCorreoConfigAsync(ReclamoCorreoConfig config)
+    public async Task SaveReclamoCorreoConfigAsync(ReclamoCorreoConfig config, IConfiguration configuration)
     {
         using var cn = _factory.CreateConnection();
         const string sql = @"
             INSERT INTO app_settings (setting_group, setting_key, setting_value)
             VALUES ('reclamos_correo', @Key, @Value)
             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = CURRENT_TIMESTAMP;";
+        var current = await GetReclamoCorreoConfigAsync(configuration);
+        var password = string.IsNullOrWhiteSpace(config.Password) || IsMaskedSecret(config.Password)
+            ? current.Password
+            : config.Password.Trim();
+
         var values = new Dictionary<string, string>
         {
             [nameof(config.EmailEnabled)] = config.EmailEnabled.ToString().ToLowerInvariant(),
@@ -354,8 +359,67 @@ public class AppSettingsRepository
             [nameof(config.Port)] = (config.Port <= 0 ? 993 : config.Port).ToString(),
             [nameof(config.UseSsl)] = config.UseSsl.ToString().ToLowerInvariant(),
             [nameof(config.Username)] = config.Username ?? "",
-            [nameof(config.Password)] = config.Password ?? ""
+            [nameof(config.Password)] = password
         };
+        foreach (var item in values)
+            await cn.ExecuteAsync(sql, new { item.Key, item.Value });
+    }
+
+    public async Task<SmtpConfig> GetSmtpConfigAsync(IConfiguration configuration)
+    {
+        using var cn = _factory.CreateConnection();
+        const string sql = @"
+            SELECT setting_key `Key`, setting_value `Value`
+            FROM app_settings
+            WHERE setting_group = 'smtp';";
+        var rows = await cn.QueryAsync<(string Key, string Value)>(sql);
+        var values = rows.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+        string Get(string key, string fallback)
+            => values.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : fallback;
+        bool GetBool(string key, bool fallback)
+            => bool.TryParse(Get(key, fallback ? "true" : "false"), out var parsed) ? parsed : fallback;
+        int GetInt(string key, int fallback)
+            => int.TryParse(Get(key, fallback.ToString()), out var parsed) ? parsed : fallback;
+
+        var username = Get(nameof(SmtpConfig.Username), configuration["Smtp:User"] ?? configuration["Email:User"] ?? "");
+        return new SmtpConfig
+        {
+            Enabled = GetBool(nameof(SmtpConfig.Enabled), configuration.GetValue<bool?>("Smtp:Enabled") ?? true),
+            Host = Get(nameof(SmtpConfig.Host), configuration["Smtp:Host"] ?? configuration["Email:SmtpHost"] ?? "smtp.gmail.com"),
+            Port = GetInt(nameof(SmtpConfig.Port), configuration.GetValue<int?>("Smtp:Port") ?? configuration.GetValue<int?>("Email:SmtpPort") ?? 587),
+            UseSsl = GetBool(nameof(SmtpConfig.UseSsl), configuration.GetValue<bool?>("Smtp:UseSsl") ?? false),
+            Username = username,
+            Password = Get(nameof(SmtpConfig.Password), configuration["Smtp:Password"] ?? configuration["Email:Password"] ?? ""),
+            FromAddress = Get(nameof(SmtpConfig.FromAddress), configuration["Smtp:From"] ?? username),
+            FromName = Get(nameof(SmtpConfig.FromName), configuration["Smtp:FromName"] ?? "Reclamos")
+        };
+    }
+
+    public async Task SaveSmtpConfigAsync(SmtpConfig config, IConfiguration configuration)
+    {
+        using var cn = _factory.CreateConnection();
+        const string sql = @"
+            INSERT INTO app_settings (setting_group, setting_key, setting_value)
+            VALUES ('smtp', @Key, @Value)
+            ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = CURRENT_TIMESTAMP;";
+        var current = await GetSmtpConfigAsync(configuration);
+        var password = string.IsNullOrWhiteSpace(config.Password) || IsMaskedSecret(config.Password)
+            ? current.Password
+            : config.Password.Trim();
+
+        var values = new Dictionary<string, string>
+        {
+            [nameof(config.Enabled)] = config.Enabled.ToString().ToLowerInvariant(),
+            [nameof(config.Host)] = string.IsNullOrWhiteSpace(config.Host) ? "smtp.gmail.com" : config.Host.Trim(),
+            [nameof(config.Port)] = (config.Port <= 0 ? 587 : config.Port).ToString(),
+            [nameof(config.UseSsl)] = config.UseSsl.ToString().ToLowerInvariant(),
+            [nameof(config.Username)] = config.Username?.Trim() ?? "",
+            [nameof(config.Password)] = password,
+            [nameof(config.FromAddress)] = string.IsNullOrWhiteSpace(config.FromAddress) ? (config.Username?.Trim() ?? "") : config.FromAddress.Trim(),
+            [nameof(config.FromName)] = string.IsNullOrWhiteSpace(config.FromName) ? "Reclamos" : config.FromName.Trim()
+        };
+
         foreach (var item in values)
             await cn.ExecuteAsync(sql, new { item.Key, item.Value });
     }

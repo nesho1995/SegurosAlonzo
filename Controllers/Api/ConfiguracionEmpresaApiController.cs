@@ -2,6 +2,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using MySqlConnector;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
@@ -199,6 +201,61 @@ public class ConfiguracionEmpresaApiController : ControllerBase
             1,
             result.response);
         return Ok(new { result.ok, result.response });
+    }
+
+    [HttpGet("/api/configuracion/smtp")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> GetSmtp()
+    {
+        var config = await _settings.GetSmtpConfigAsync(_configuration);
+        return Ok(new SmtpConfigDto
+        {
+            Enabled = config.Enabled,
+            Host = config.Host,
+            Port = config.Port,
+            UseSsl = config.UseSsl,
+            Username = config.Username,
+            PasswordMasked = string.IsNullOrWhiteSpace(config.Password) ? "" : "********",
+            FromAddress = config.FromAddress,
+            FromName = config.FromName
+        });
+    }
+
+    [HttpPut("/api/configuracion/smtp")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> UpdateSmtp(SmtpConfig config)
+    {
+        if (config.Enabled && (string.IsNullOrWhiteSpace(config.Host) || string.IsNullOrWhiteSpace(config.Username)))
+            return BadRequest(new { error = "Completa host y correo de produccion antes de activar SMTP." });
+
+        await _settings.SaveSmtpConfigAsync(config, _configuration);
+        await _auditoria.RegistrarAsync("CAMBIAR_CONFIGURACION_SMTP", "CONFIGURACION", 1, $"SMTP produccion {(config.Enabled ? "activado" : "desactivado")}.");
+        return NoContent();
+    }
+
+    [HttpPost("/api/configuracion/smtp/probar")]
+    [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    public async Task<IActionResult> ProbarSmtp()
+    {
+        var config = await _settings.GetSmtpConfigAsync(_configuration);
+        if (string.IsNullOrWhiteSpace(config.Host) || string.IsNullOrWhiteSpace(config.Username) || string.IsNullOrWhiteSpace(config.Password))
+            return BadRequest(new { error = "Completa host, correo de produccion y password SMTP." });
+
+        try
+        {
+            using var client = new SmtpClient();
+            var secure = config.Port == 465 || config.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+            await client.ConnectAsync(config.Host, config.Port, secure);
+            await client.AuthenticateAsync(config.Username, config.Password);
+            await client.DisconnectAsync(true);
+            await _auditoria.RegistrarAsync("PROBAR_SMTP_OK", "CONFIGURACION", 1, "Conexion SMTP verificada.");
+            return Ok(new { ok = true, response = "Conexion SMTP exitosa." });
+        }
+        catch (Exception ex)
+        {
+            await _auditoria.RegistrarAsync("PROBAR_SMTP_ERROR", "CONFIGURACION", 1, ex.Message);
+            return BadRequest(new { error = $"No se pudo conectar a SMTP: {ex.Message}" });
+        }
     }
 
     private int? CurrentUserId()

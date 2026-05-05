@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, MessageSquare, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, Mail, MessageSquare, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -29,6 +29,7 @@ import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 import { GastosView } from './views/GastosView'
 import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 import { WhatsAppBandejaView } from './views/WhatsAppBandejaView'
+import { CorreoConfigView } from './views/CorreoConfigView'
 import { GlobalSearch } from './components/GlobalSearch'
 import { ToastHost } from './components/ToastHost'
 
@@ -50,6 +51,7 @@ const navItems = [
   { id: 'envios-auto',     label: 'Envios automaticos', icon: Send,            section: 'Automatizacion' },
   // Configuracion
   { id: 'configuracion',   label: 'Empresa',            icon: Building2,       section: 'Configuracion' },
+  { id: 'correo-config',   label: 'Correo',             icon: Mail,            section: 'Configuracion' },
   { id: 'whatsapp-config', label: 'WhatsApp',           icon: Send,            section: 'Configuracion' },
   { id: 'usuarios',        label: 'Usuarios',           icon: UserCog,         section: 'Configuracion' },
   { id: 'catalogos',       label: 'Catalogos',          icon: Settings,        section: 'Configuracion' },
@@ -100,6 +102,7 @@ function AppRouter() {
     if (target === 'automatizaciones') return hasPermission('automatizaciones.ver')
     if (target === 'configuracion') return hasPermission('configuracion.administrar')
     if (target === 'envios-auto') return hasPermission('configuracion.administrar')
+    if (target === 'correo-config') return hasPermission('configuracion.administrar')
     if (target === 'whatsapp-config') return hasPermission('configuracion.administrar')
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
     if (target === 'reclamos-config') return hasPermission('configuracion.administrar')
@@ -132,6 +135,7 @@ function AppRouter() {
           {view === 'usuarios'       && <UsuariosView />}
           {view === 'configuracion'  && <ConfiguracionEmpresaView />}
           {view === 'envios-auto'    && <AutomatizacionEnviosView />}
+          {view === 'correo-config'  && <CorreoConfigView />}
           {view === 'whatsapp-config'   && <WhatsAppConfigView />}
           {view === 'whatsapp-bandeja'  && <WhatsAppBandejaView />}
           {view === 'catalogos'      && <CatalogosView />}

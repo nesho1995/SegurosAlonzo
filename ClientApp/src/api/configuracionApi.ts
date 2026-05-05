@@ -36,6 +36,18 @@ export type WhatsAppConfig = {
   webhookVerifyTokenMasked: string
 }
 
+export type SmtpConfig = {
+  enabled: boolean
+  host: string
+  port: number
+  useSsl: boolean
+  username: string
+  password?: string
+  passwordMasked?: string
+  fromAddress: string
+  fromName: string
+}
+
 export function getEmpresaConfiguracion() {
   return getJson<EmpresaConfiguracion>('/api/configuracion/empresa')
 }
@@ -62,6 +74,18 @@ export function updateWhatsAppConfig(config: WhatsAppConfig) {
 
 export function probarWhatsApp(telefono: string, mensaje: string) {
   return postJson<{ ok: boolean; response: string }>('/api/configuracion/whatsapp/probar', { telefono, mensaje })
+}
+
+export function getSmtpConfig() {
+  return getJson<SmtpConfig>('/api/configuracion/smtp')
+}
+
+export function updateSmtpConfig(config: SmtpConfig) {
+  return sendJson('/api/configuracion/smtp', 'PUT', config)
+}
+
+export function probarSmtp() {
+  return postJson<{ ok: boolean; response: string }>('/api/configuracion/smtp/probar', {})
 }
 
 export async function uploadEmpresaLogo(file: File) {

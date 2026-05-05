@@ -58,7 +58,7 @@ public class ReclamosConfiguracionApiController : ControllerBase
     [HttpPut("correo")]
     public async Task<IActionResult> SaveCorreoConfig(ReclamoCorreoConfig config)
     {
-        await _settings.SaveReclamoCorreoConfigAsync(config);
+        await _settings.SaveReclamoCorreoConfigAsync(config, _configuration);
         await _auditoria.RegistrarAsync("GUARDAR_CONFIG_CORREO_RECLAMOS", "CONFIGURACION", 1, "Configuracion de correo de reclamos actualizada.");
         return NoContent();
     }

@@ -1,6 +1,7 @@
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
+using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
 
 namespace ReclamosWhatsApp.Services;
@@ -8,11 +9,13 @@ namespace ReclamosWhatsApp.Services;
 public class EmailSenderService
 {
     private readonly IConfiguration _config;
+    private readonly AppSettingsRepository _settings;
     private readonly DocumentoStorageService _storage;
 
-    public EmailSenderService(IConfiguration config, DocumentoStorageService storage)
+    public EmailSenderService(IConfiguration config, AppSettingsRepository settings, DocumentoStorageService storage)
     {
         _config = config;
+        _settings = settings;
         _storage = storage;
     }
 
@@ -25,12 +28,16 @@ public class EmailSenderService
         if (docs.Count == 0)
             return (false, "No hay documentos adjuntos para enviar.");
 
-        var host = _config["Smtp:Host"] ?? _config["Email:SmtpHost"] ?? "smtp.gmail.com";
-        var port = GetInt("Smtp:Port", GetInt("Email:SmtpPort", 587));
-        var user = _config["Smtp:User"] ?? _config["Email:User"] ?? "";
-        var password = _config["Smtp:Password"] ?? _config["Email:Password"] ?? "";
-        var fromAddress = _config["Smtp:From"] ?? user;
-        var fromName = _config["Smtp:FromName"] ?? "Reclamos";
+        var smtp = await _settings.GetSmtpConfigAsync(_config);
+        if (!smtp.Enabled)
+            return (false, "El envio SMTP esta deshabilitado.");
+
+        var host = smtp.Host;
+        var port = smtp.Port;
+        var user = smtp.Username;
+        var password = smtp.Password;
+        var fromAddress = string.IsNullOrWhiteSpace(smtp.FromAddress) ? user : smtp.FromAddress;
+        var fromName = smtp.FromName;
 
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(fromAddress))
             return (false, "La configuracion SMTP esta incompleta.");
@@ -65,7 +72,7 @@ Quedamos atentos.
         message.Body = builder.ToMessageBody();
 
         using var client = new SmtpClient();
-        var secure = port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+        var secure = port == 465 || smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
         await client.ConnectAsync(host, port, secure);
         await client.AuthenticateAsync(user, password);
         var response = await client.SendAsync(message);
@@ -73,8 +80,4 @@ Quedamos atentos.
         return (true, response);
     }
 
-    private int GetInt(string key, int fallback)
-    {
-        return int.TryParse(_config[key], out var value) && value > 0 ? value : fallback;
-    }
 }

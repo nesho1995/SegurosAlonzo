@@ -28,6 +28,30 @@ public class ReclamoCorreoConfigDto
     public string PasswordMasked { get; set; } = "";
 }
 
+public class SmtpConfig
+{
+    public bool Enabled { get; set; }
+    public string Host { get; set; } = "smtp.gmail.com";
+    public int Port { get; set; } = 587;
+    public bool UseSsl { get; set; }
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string FromAddress { get; set; } = "";
+    public string FromName { get; set; } = "Reclamos";
+}
+
+public class SmtpConfigDto
+{
+    public bool Enabled { get; set; }
+    public string Host { get; set; } = "smtp.gmail.com";
+    public int Port { get; set; } = 587;
+    public bool UseSsl { get; set; }
+    public string Username { get; set; } = "";
+    public string PasswordMasked { get; set; } = "";
+    public string FromAddress { get; set; } = "";
+    public string FromName { get; set; } = "Reclamos";
+}
+
 public class ReclamoWorkerEstado
 {
     public DateTime? UltimaEjecucionUtc { get; set; }
