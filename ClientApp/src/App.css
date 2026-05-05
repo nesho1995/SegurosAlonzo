@@ -192,20 +192,37 @@
   width: min(100%, 440px);
   display: grid;
   gap: 14px;
+  justify-items: stretch;
   padding: 28px;
   border: 1px solid #d8e4e0;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 18px 42px rgba(23, 33, 38, 0.12);
+  text-align: center;
 }
 
 .auth-card h1,
 .auth-card p {
+  justify-self: center;
   margin: 0;
+  text-align: center;
 }
 
 .auth-card p {
+  max-width: 340px;
   color: #607177;
+}
+
+.auth-card .eyebrow {
+  justify-self: center;
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.auth-card .field,
+.auth-card .inline-alert {
+  text-align: left;
 }
 
 .auth-mark {

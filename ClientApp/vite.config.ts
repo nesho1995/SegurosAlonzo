@@ -2,11 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 
-const clientAppRoot = fileURLToPath(new URL('.', import.meta.url))
+const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
-  root: clientAppRoot,
+  root: frontendRoot,
   plugins: [react()],
   server: {
     port: 5173,
