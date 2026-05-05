@@ -1,5 +1,6 @@
 using Dapper;
 using ReclamosWhatsApp.Models;
+using System.Text.Json;
 
 namespace ReclamosWhatsApp.Data;
 
@@ -438,12 +439,34 @@ public class AppSettingsRepository
             dt = parsedDate;
         int.TryParse(values.TryGetValue("CorreosEncontrados", out var found) ? found : "0", out var encontrados);
         int.TryParse(values.TryGetValue("CorreosProcesados", out var processed) ? processed : "0", out var procesados);
+        int.TryParse(values.TryGetValue("ReclamosValidos", out var valid) ? valid : "0", out var validos);
+        int.TryParse(values.TryGetValue("CorreosIgnorados", out var ignored) ? ignored : "0", out var ignorados);
+        int.TryParse(values.TryGetValue("CorreosDuplicados", out var dup) ? dup : "0", out var duplicados);
+        int.TryParse(values.TryGetValue("CorreosConError", out var errCount) ? errCount : "0", out var conError);
+        var detalles = new List<CorreoProcesamientoDetalle>();
+        if (values.TryGetValue("DetallesJson", out var rawDetails) && !string.IsNullOrWhiteSpace(rawDetails))
+        {
+            try
+            {
+                detalles = JsonSerializer.Deserialize<List<CorreoProcesamientoDetalle>>(rawDetails) ?? new();
+            }
+            catch
+            {
+                detalles = new();
+            }
+        }
+
         return new ReclamoWorkerEstado
         {
             UltimaEjecucionUtc = dt,
             UltimoError = values.TryGetValue("UltimoError", out var error) ? error : null,
             CorreosEncontrados = encontrados,
-            CorreosProcesados = procesados
+            ReclamosValidos = validos,
+            CorreosProcesados = procesados,
+            CorreosIgnorados = ignorados,
+            CorreosDuplicados = duplicados,
+            CorreosConError = conError,
+            Detalles = detalles
         };
     }
 
@@ -459,7 +482,12 @@ public class AppSettingsRepository
             ["UltimaEjecucionUtc"] = (estado.UltimaEjecucionUtc ?? DateTime.UtcNow).ToString("o"),
             ["UltimoError"] = estado.UltimoError ?? "",
             ["CorreosEncontrados"] = estado.CorreosEncontrados.ToString(),
-            ["CorreosProcesados"] = estado.CorreosProcesados.ToString()
+            ["ReclamosValidos"] = estado.ReclamosValidos.ToString(),
+            ["CorreosProcesados"] = estado.CorreosProcesados.ToString(),
+            ["CorreosIgnorados"] = estado.CorreosIgnorados.ToString(),
+            ["CorreosDuplicados"] = estado.CorreosDuplicados.ToString(),
+            ["CorreosConError"] = estado.CorreosConError.ToString(),
+            ["DetallesJson"] = JsonSerializer.Serialize(estado.Detalles.TakeLast(25).ToList())
         };
         foreach (var item in values)
             await cn.ExecuteAsync(sql, new { item.Key, item.Value });

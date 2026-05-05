@@ -57,9 +57,20 @@ public class ReclamoCorreoProcessingService
                 try
                 {
                     if (!await _extractor.EsCorreoDeReclamoAsync(email.Subject))
+                    {
+                        estado.CorreosIgnorados++;
+                        estado.Detalles.Add(Detalle(email, "IGNORADO", "El asunto no coincide con el patron de reclamo."));
                         continue;
+                    }
+
+                    estado.ReclamosValidos++;
+
                     if (await _repo.ExistsByMessageIdAsync(email.MessageId))
+                    {
+                        estado.CorreosDuplicados++;
+                        estado.Detalles.Add(Detalle(email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId."));
                         continue;
+                    }
 
                     var reclamo = await _extractor.ExtractAsync(email);
                     await _extractorConfigurable.ProbarAsync(new ExtractorTestRequest
@@ -74,12 +85,15 @@ public class ReclamoCorreoProcessingService
                     reclamo.MensajeWhatsApp = await _messageBuilder.GenerateMessageAsync(reclamo);
                     reclamo.Estado = "PENDIENTE_ENVIO";
                     var reclamoId = await _repo.InsertAsync(reclamo);
+                    estado.Detalles.Add(Detalle(email, "PROCESADO", $"Reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamoId.ToString()} creado.", reclamoId));
                     await SafeAutomationAsync("reclamo_nuevo", "RECLAMO", reclamoId, reclamo);
                     await _automaticWhatsApp.ProcesarReclamoNuevoAsync(reclamoId, reclamo);
                     procesados++;
                 }
                 catch (Exception ex)
                 {
+                    estado.CorreosConError++;
+                    estado.Detalles.Add(Detalle(email, "ERROR", ex.Message));
                     _logger.LogError(ex, "Error procesando correo {Subject}", email.Subject);
                 }
             }
@@ -108,6 +122,18 @@ public class ReclamoCorreoProcessingService
         }
 
         return estado;
+    }
+
+    private static CorreoProcesamientoDetalle Detalle(EmailMessageDto email, string estado, string motivo, int? reclamoId = null)
+    {
+        return new CorreoProcesamientoDetalle
+        {
+            Subject = email.Subject ?? "",
+            MessageId = email.MessageId ?? "",
+            Estado = estado,
+            Motivo = motivo,
+            ReclamoId = reclamoId
+        };
     }
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)

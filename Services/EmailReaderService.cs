@@ -69,7 +69,7 @@ public class EmailReaderService
                 .And(SearchQuery.NotSeen)
         );
 
-        _logger.LogInformation("Correos no leídos encontrados en últimas 2 horas: {Count}", uids.Count);
+        _logger.LogInformation("Correos no leidos encontrados en ultimas {Hours} horas: {Count}", lookbackHours, uids.Count);
 
         foreach (var uid in uids)
         {

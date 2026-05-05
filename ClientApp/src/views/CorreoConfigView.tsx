@@ -81,7 +81,12 @@ export function CorreoConfigView() {
               <button className="icon-button secondary" onClick={() => void recoveryReclamos(72).then(() => load())}>Modo recuperacion 72h</button>
             </div>
           </div>
-          {status && <div className="inline-alert info">Ultima ejecucion: {status.ultimaEjecucionUtc || 'N/A'} | Encontrados: {status.correosEncontrados} | Procesados: {status.correosProcesados} {status.ultimoError ? `| Error: ${status.ultimoError}` : ''}</div>}
+          {status && (
+            <div className="inline-alert info">
+              Ultima ejecucion: {status.ultimaEjecucionUtc || 'N/A'} | Leidos: {status.correosEncontrados} | Reclamos validos: {status.reclamosValidos} | Creados: {status.correosProcesados} | Ignorados: {status.correosIgnorados} | Duplicados: {status.correosDuplicados} | Errores: {status.correosConError}
+              {status.ultimoError ? ` | Error general: ${status.ultimoError}` : ''}
+            </div>
+          )}
         </article>
 
         <article className="panel">
@@ -102,6 +107,20 @@ export function CorreoConfigView() {
           </div>
         </article>
       </section>
+
+      {status?.detalles && status.detalles.length > 0 && (
+        <article className="panel mt-panel">
+          <PanelTitle title="Ultimos correos evaluados" subtitle="Resultado exacto del worker para entender que se creo, ignoro o rechazo." />
+          <div className="result-panel">
+            {status.detalles.map((item, index) => (
+              <div key={`${item.messageId}-${index}`} className="renewal-row">
+                <strong>{item.estado}{item.reclamoId ? ` #${item.reclamoId}` : ''}</strong>
+                <span>{item.subject || 'Sin asunto'} - {item.motivo}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+      )}
     </>
   )
 }

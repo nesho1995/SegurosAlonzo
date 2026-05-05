@@ -57,7 +57,21 @@ public class ReclamoWorkerEstado
     public DateTime? UltimaEjecucionUtc { get; set; }
     public string? UltimoError { get; set; }
     public int CorreosEncontrados { get; set; }
+    public int ReclamosValidos { get; set; }
     public int CorreosProcesados { get; set; }
+    public int CorreosIgnorados { get; set; }
+    public int CorreosDuplicados { get; set; }
+    public int CorreosConError { get; set; }
+    public List<CorreoProcesamientoDetalle> Detalles { get; set; } = new();
+}
+
+public class CorreoProcesamientoDetalle
+{
+    public string Subject { get; set; } = "";
+    public string MessageId { get; set; } = "";
+    public string Estado { get; set; } = "";
+    public string Motivo { get; set; } = "";
+    public int? ReclamoId { get; set; }
 }
 
 public class CorreoReclamoPatron

@@ -16,7 +16,20 @@ export type ReclamoWorkerEstado = {
   ultimaEjecucionUtc?: string
   ultimoError?: string
   correosEncontrados: number
+  reclamosValidos: number
   correosProcesados: number
+  correosIgnorados: number
+  correosDuplicados: number
+  correosConError: number
+  detalles: CorreoProcesamientoDetalle[]
+}
+
+export type CorreoProcesamientoDetalle = {
+  subject: string
+  messageId: string
+  estado: string
+  motivo: string
+  reclamoId?: number
 }
 
 export type CorreoReclamoPatron = {
