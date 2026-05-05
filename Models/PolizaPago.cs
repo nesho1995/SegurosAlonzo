@@ -26,3 +26,8 @@ public class RegistrarPagoRequest
     public string? ReferenciaBanco { get; set; }
     public string? Observaciones { get; set; }
 }
+
+public class ActualizarCuotaRequest
+{
+    public DateTime? FechaVencimiento { get; set; }
+}

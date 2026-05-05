@@ -455,9 +455,9 @@ public class CarteraRepository
         nombre = nombre.Trim();
 
         const string buscarSql = @"
-            SELECT id 
-            FROM clientes 
-            WHERE nombre = @nombre
+            SELECT id
+            FROM clientes
+            WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(@nombre))
               AND (
                 @telefono IS NULL
                 OR @telefono = ''
@@ -484,7 +484,7 @@ public class CarteraRepository
             existente = await cn.ExecuteScalarAsync<int?>(@"
                 SELECT id
                 FROM clientes
-                WHERE nombre = @nombre
+                WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(@nombre))
                 LIMIT 1;", new { nombre });
         }
 

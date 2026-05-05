@@ -70,7 +70,10 @@ public class PagoRepository
                 parameters.Add(pMonto, montoCuota);
             }
 
-            var batchSql = $"INSERT IGNORE INTO poliza_cuotas (poliza_id, numero_cuota, fecha_vencimiento, monto, estado) VALUES {string.Join(",", valores)};";
+            var batchSql = $@"INSERT INTO poliza_cuotas (poliza_id, numero_cuota, fecha_vencimiento, monto, estado)
+VALUES {string.Join(",", valores)}
+ON DUPLICATE KEY UPDATE
+    monto = IF(monto = 0 AND VALUES(monto) > 0, VALUES(monto), monto);";
             creadas += await cn.ExecuteAsync(batchSql, parameters);
         }
 
@@ -448,6 +451,21 @@ public class PagoRepository
                 END
             WHERE p.id = q.poliza_id;";
         await cn.ExecuteAsync(sql, new { cuotaId }, tx);
+    }
+
+    public async Task ActualizarFechaCuotaAsync(int cuotaId, DateTime fechaVencimiento)
+    {
+        using var cn = _factory.CreateConnection();
+        cn.Open();
+        using var tx = cn.BeginTransaction();
+        await cn.ExecuteAsync(@"
+            UPDATE poliza_cuotas
+            SET fecha_vencimiento = @fechaVencimiento
+            WHERE id = @cuotaId
+              AND estado NOT IN ('PAGADA');",
+            new { cuotaId, fechaVencimiento = fechaVencimiento.Date }, tx);
+        await RecalcularEstadoCuotaAsync(cuotaId, cn, tx);
+        tx.Commit();
     }
 
     public async Task EnsureSchemaAsync()

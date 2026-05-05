@@ -61,6 +61,7 @@ export async function requestJson<T = unknown>(url: string, method: 'POST' | 'PU
 }
 export async function sendJson(url: string, method: 'PUT' | 'PATCH', body: unknown): Promise<void> { await requestJson(url, method, body) }
 export async function postJson<T = unknown>(url: string, body: unknown): Promise<T | null> { return requestJson<T>(url, 'POST', body) }
+export async function putJson<T = unknown>(url: string, body: unknown): Promise<T | null> { return requestJson<T>(url, 'PUT', body) }
 export async function deleteJson<T = unknown>(url: string): Promise<T | null> {
   const response = await fetch(url, { method: 'DELETE', credentials: 'include' })
   if (response.status === 401 || response.redirected) {

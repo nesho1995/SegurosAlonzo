@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileUp } from 'lucide-react'
-import { getPagos, registrarPagoCuota } from '../api/pagosApi'
+import { AlertTriangle, CalendarClock, CheckCircle2, Eye, FileUp, Pencil } from 'lucide-react'
+import { actualizarFechaCuota, getPagos, registrarPagoCuota } from '../api/pagosApi'
 import { StatusPill } from '../components/Badge'
 import { CellTitle, DataTable } from '../components/DataTable'
 import { LoadingCard } from '../components/LoadingState'
@@ -26,6 +26,7 @@ export function PaymentsView() {
   const [paymentForm, setPaymentForm] = useState({ monto: '', fechaPago: '', metodoPago: 'TRANSFERENCIA', documentoId: '', numeroRecibo: '', referenciaBanco: '', observaciones: '' })
   const [message, setMessage] = useState<string | null>(null)
   const [hideList, setHideList] = useState(false)
+  const [editingFecha, setEditingFecha] = useState<{ id: number; fecha: string } | null>(null)
   const paymentPanelRef = useRef<HTMLElement | null>(null)
   const saldoSeleccionado = selectedPayment ? Math.max(0, Number(selectedPayment.monto || 0) - Number(selectedPayment.montoPagado || 0)) : 0
 
@@ -70,6 +71,19 @@ export function PaymentsView() {
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Error inesperado.'
       setError(text)
+      notify(text, 'error')
+    }
+  }
+
+  async function guardarFecha() {
+    if (!editingFecha) return
+    try {
+      await actualizarFechaCuota(editingFecha.id, editingFecha.fecha)
+      notify('Fecha actualizada.', 'success')
+      setEditingFecha(null)
+      load()
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Error al actualizar fecha.'
       notify(text, 'error')
     }
   }
@@ -157,11 +171,29 @@ export function PaymentsView() {
                   <button className="icon-button secondary" onClick={() => selectPayment(item, 'pago')}><CheckCircle2 size={16} />Registrar pago</button>
                   <button className="icon-button secondary" onClick={() => selectPayment(item, 'comprobante')}><FileUp size={16} />Comprobante</button>
                   <button className="icon-button secondary" onClick={() => selectPayment(item, 'docs')}><Eye size={16} />Ver docs</button>
+                  {item.estado !== 'PAGADA' && (
+                    <button className="icon-button secondary" onClick={() => setEditingFecha({ id: item.id, fecha: item.fechaVencimiento.slice(0, 10) })}><Pencil size={16} />Fecha</button>
+                  )}
                 </div>,
               ])}
             />
             {data.items.length === 0 && <div className="empty">No hay cuotas para el filtro seleccionado.</div>}
           </article>}
+          {editingFecha && (
+            <article className="panel mt-panel">
+              <PanelTitle title="Editar fecha de vencimiento" subtitle="Solo aplica si la cuota no ha sido pagada." />
+              <div className="form-grid compact-form">
+                <label className="field">
+                  <span>Nueva fecha de vencimiento</span>
+                  <input type="date" value={editingFecha.fecha} onChange={(e) => setEditingFecha({ ...editingFecha, fecha: e.target.value })} />
+                </label>
+                <div className="form-actions">
+                  <button className="primary-button" onClick={() => void guardarFecha()}>Guardar fecha</button>
+                  <button className="secondary-button" onClick={() => setEditingFecha(null)}>Cancelar</button>
+                </div>
+              </div>
+            </article>
+          )}
           {selectedPayment && (
             <article className="panel mt-panel" ref={paymentPanelRef}>
               <PanelTitle

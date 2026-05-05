@@ -83,6 +83,19 @@ public class PagosApiController : ControllerBase
         return Ok(new { pagoId });
     }
 
+    [HttpPut("cuotas/{cuotaId:int}")]
+    [Authorize(Policy = Permissions.PagosEditar)]
+    public async Task<IActionResult> ActualizarCuota(int cuotaId, [FromBody] ActualizarCuotaRequest request)
+    {
+        if (request.FechaVencimiento is null)
+            return BadRequest(new { error = "Debe indicar la nueva fecha de vencimiento." });
+
+        await _pagos.ActualizarFechaCuotaAsync(cuotaId, request.FechaVencimiento.Value);
+        await _auditoria.RegistrarAsync("ACTUALIZAR_FECHA_CUOTA", "PAGO", cuotaId,
+            $"Fecha vencimiento actualizada a {request.FechaVencimiento.Value:yyyy-MM-dd}.");
+        return Ok(new { ok = true });
+    }
+
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {
         try
