@@ -39,6 +39,9 @@ public static class Permissions
     public const string CotizacionesEditar = "cotizaciones.editar";
     public const string CotizacionesEliminar = "cotizaciones.eliminar";
 
+    public const string WhatsAppBandejaVer = "whatsapp.bandeja";
+    public const string WhatsAppBandejaResponder = "whatsapp.bandeja.responder";
+
     public static readonly string[] All =
     {
         DashboardVer, ClientesVer, ClientesEditar, ClientesCrear, PolizasVer, PolizasEditar, PolizasCrear,
@@ -46,7 +49,8 @@ public static class Permissions
         TalleresVer, TalleresEditar, DocumentosVer, DocumentosSubir, DocumentosEliminar, AuditoriaVer,
         UsuariosAdministrar, ConfiguracionAdministrar, CatalogosAdministrar, AutomatizacionesVer, AutomatizacionesCrear,
         AutomatizacionesEditar, AutomatizacionesEliminar, GastosVer, GastosCrear, GastosEditar, GastosEliminar,
-        CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar
+        CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar,
+        WhatsAppBandejaVer, WhatsAppBandejaResponder
     };
 
     private static readonly Dictionary<string, string[]> RolePermissions = new(StringComparer.OrdinalIgnoreCase)
@@ -59,14 +63,16 @@ public static class Permissions
             TalleresVer, TalleresEditar, DocumentosVer, DocumentosSubir, DocumentosEliminar, AuditoriaVer,
             AutomatizacionesVer, AutomatizacionesCrear, AutomatizacionesEditar, AutomatizacionesEliminar,
             GastosVer, GastosCrear, GastosEditar, GastosEliminar,
-            CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar
+            CotizacionesVer, CotizacionesCrear, CotizacionesEditar, CotizacionesEliminar,
+            WhatsAppBandejaVer, WhatsAppBandejaResponder
         },
         ["EJECUTIVO"] = new[]
         {
             DashboardVer, ClientesVer, ClientesEditar, ClientesCrear, PolizasVer, PolizasEditar, PolizasCrear,
             PagosVer, ReclamosVer, ReclamosEditar, RecordatoriosVer, TalleresVer, DocumentosVer, DocumentosSubir,
             AutomatizacionesVer, GastosVer, GastosCrear, GastosEditar,
-            CotizacionesVer, CotizacionesCrear, CotizacionesEditar
+            CotizacionesVer, CotizacionesCrear, CotizacionesEditar,
+            WhatsAppBandejaVer, WhatsAppBandejaResponder
         },
         ["SOLO_LECTURA"] = new[]
         {

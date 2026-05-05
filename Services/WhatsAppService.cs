@@ -12,6 +12,7 @@ public class WhatsAppService
     private readonly HttpClient _http;
     private readonly PhoneNormalizationService _phones;
     private readonly AppSettingsRepository _settings;
+    private readonly WhatsAppConversacionRepository _conversaciones;
     private readonly ILogger<WhatsAppService> _logger;
 
     public WhatsAppService(
@@ -19,12 +20,14 @@ public class WhatsAppService
         HttpClient http,
         PhoneNormalizationService phones,
         AppSettingsRepository settings,
+        WhatsAppConversacionRepository conversaciones,
         ILogger<WhatsAppService> logger)
     {
         _config = config;
         _http = http;
         _phones = phones;
         _settings = settings;
+        _conversaciones = conversaciones;
         _logger = logger;
     }
 
@@ -46,15 +49,16 @@ public class WhatsAppService
         return await SendTextAsync(r.Celular ?? "", r.MensajeWhatsApp ?? "", config);
     }
 
-    public async Task<(bool ok, string response)> SendTextAsync(string numeroDestino, string mensaje)
+    public async Task<(bool ok, string response)> SendTextAsync(string numeroDestino, string mensaje, int? usuarioId = null)
     {
         var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
-        return await SendTextAsync(numeroDestino, mensaje, config);
+        return await SendTextAsync(numeroDestino, mensaje, config, usuarioId);
     }
 
     // ─── Internos ────────────────────────────────────────────────────────────
 
-    private async Task<(bool ok, string response)> SendTextAsync(string numeroDestino, string mensaje, WhatsAppConfig config)
+    private async Task<(bool ok, string response)> SendTextAsync(
+        string numeroDestino, string mensaje, WhatsAppConfig config, int? usuarioId = null)
     {
         if (!config.Enabled)
             return (false, "WhatsApp está desactivado desde Configuración → WhatsApp.");
@@ -77,7 +81,43 @@ public class WhatsAppService
             text = new { preview_url = false, body = mensaje }
         };
 
-        return await PostToMetaAsync(config, body);
+        var (ok, response) = await PostToMetaAsync(config, body);
+
+        if (ok)
+        {
+            try
+            {
+                string? waMessageId = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(response);
+                    if (doc.RootElement.TryGetProperty("messages", out var msgs))
+                    {
+                        var first = msgs.EnumerateArray().FirstOrDefault();
+                        waMessageId = first.TryGetProperty("id", out var mid) ? mid.GetString() : null;
+                    }
+                }
+                catch { /* ignorar si no se puede parsear */ }
+
+                var convId = await _conversaciones.GetOrCreateConversacionAsync(normalizedPhone, null);
+                await _conversaciones.SaveMensajeAsync(new WhatsAppMensaje
+                {
+                    ConversacionId    = convId,
+                    WhatsappMessageId = waMessageId,
+                    Direccion         = "saliente",
+                    TipoContenido     = "texto",
+                    Contenido         = mensaje,
+                    Estado            = "enviado",
+                    UsuarioId         = usuarioId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No se pudo guardar mensaje saliente en bandeja para {Tel}", normalizedPhone);
+            }
+        }
+
+        return (ok, response);
     }
 
     /// <summary>

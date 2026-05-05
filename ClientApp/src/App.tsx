@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, MessageSquare, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -28,6 +28,7 @@ import { CatalogosView } from './views/CatalogosView'
 import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 import { GastosView } from './views/GastosView'
 import { WhatsAppConfigView } from './views/WhatsAppConfigView'
+import { WhatsAppBandejaView } from './views/WhatsAppBandejaView'
 import { GlobalSearch } from './components/GlobalSearch'
 import { ToastHost } from './components/ToastHost'
 
@@ -40,9 +41,10 @@ const navItems = [
   { id: 'gastos',          label: 'Gastos',             icon: ReceiptText,     section: 'Cartera' },
   { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
   // Operaciones
-  { id: 'reclamos',        label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
-  { id: 'recordatorios',   label: 'Recordatorios',      icon: Send,            section: 'Operaciones' },
-  { id: 'talleres',        label: 'Talleres',           icon: Wrench,          section: 'Operaciones' },
+  { id: 'reclamos',          label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
+  { id: 'whatsapp-bandeja',  label: 'Bandeja WhatsApp',   icon: MessageSquare,   section: 'Operaciones' },
+  { id: 'recordatorios',     label: 'Recordatorios',      icon: Send,            section: 'Operaciones' },
+  { id: 'talleres',          label: 'Talleres',           icon: Wrench,          section: 'Operaciones' },
   // Automatizacion
   { id: 'automatizaciones',label: 'Automatizaciones',   icon: Bot,             section: 'Automatizacion' },
   { id: 'envios-auto',     label: 'Envios automaticos', icon: Send,            section: 'Automatizacion' },
@@ -102,6 +104,7 @@ function AppRouter() {
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
     if (target === 'reclamos-config') return hasPermission('configuracion.administrar')
     if (target === 'gastos') return hasPermission('gastos.ver')
+    if (target === 'whatsapp-bandeja') return hasPermission('whatsapp.bandeja')
     return true
   }
 
@@ -129,7 +132,8 @@ function AppRouter() {
           {view === 'usuarios'       && <UsuariosView />}
           {view === 'configuracion'  && <ConfiguracionEmpresaView />}
           {view === 'envios-auto'    && <AutomatizacionEnviosView />}
-          {view === 'whatsapp-config' && <WhatsAppConfigView />}
+          {view === 'whatsapp-config'   && <WhatsAppConfigView />}
+          {view === 'whatsapp-bandeja'  && <WhatsAppBandejaView />}
           {view === 'catalogos'      && <CatalogosView />}
           {view === 'reclamos-config' && <ReclamosConfiguracionView />}
           {view === 'password'       && <CambiarPasswordView />}
@@ -146,6 +150,7 @@ function viewFromPath(path: string): View {
   if (normalized === 'access-denied') return 'access-denied'
   if (normalized === 'usuarios') return 'usuarios'
   if (normalized === 'cambiar-password') return 'password'
+  if (normalized === 'whatsapp-bandeja') return 'whatsapp-bandeja'
   const match = navItems.find((item) => item.id === normalized)
   return match?.id ?? 'dashboard'
 }

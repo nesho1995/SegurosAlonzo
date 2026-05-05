@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ReclamosWhatsApp.Data;
+using ReclamosWhatsApp.Models;
 using ReclamosWhatsApp.Services;
 using System.Text.Json;
 
@@ -18,17 +19,20 @@ public class WhatsAppWebhookController : ControllerBase
     private readonly AppSettingsRepository _settings;
     private readonly IConfiguration _config;
     private readonly AuditoriaService _auditoria;
+    private readonly WhatsAppConversacionRepository _conversaciones;
     private readonly ILogger<WhatsAppWebhookController> _logger;
 
     public WhatsAppWebhookController(
         AppSettingsRepository settings,
         IConfiguration config,
         AuditoriaService auditoria,
+        WhatsAppConversacionRepository conversaciones,
         ILogger<WhatsAppWebhookController> logger)
     {
         _settings = settings;
         _config = config;
         _auditoria = auditoria;
+        _conversaciones = conversaciones;
         _logger = logger;
     }
 
@@ -122,6 +126,21 @@ public class WhatsAppWebhookController : ControllerBase
                 "WhatsApp status: {MessageId} → {Estado} para {Recipient} en {Timestamp}",
                 messageId, estado, recipient, timestamp);
 
+            // Actualizar estado en la tabla de mensajes
+            if (!string.IsNullOrWhiteSpace(messageId) && !string.IsNullOrWhiteSpace(estado))
+            {
+                var estadoNorm = estado.ToLowerInvariant() switch
+                {
+                    "sent"      => "enviado",
+                    "delivered" => "entregado",
+                    "read"      => "leido",
+                    "failed"    => "error",
+                    _           => estado
+                };
+                try { await _conversaciones.ActualizarEstadoMensajeAsync(messageId, estadoNorm); }
+                catch (Exception ex) { _logger.LogWarning(ex, "No se pudo actualizar estado de mensaje {Id}", messageId); }
+            }
+
             // Estado 'failed' → registrar en auditoría para visibilidad
             if (string.Equals(estado, "failed", StringComparison.OrdinalIgnoreCase))
             {
@@ -159,6 +178,22 @@ public class WhatsAppWebhookController : ControllerBase
             if (msgType == "text" && msg.TryGetProperty("text", out var textObj))
                 texto = textObj.TryGetProperty("body", out var b) ? b.GetString() : null;
 
+            // Extraer media si aplica
+            string? mediaId = null;
+            string? mediaMime = null;
+            string? mediaNombre = null;
+            if (msgType is "image" or "document" or "audio" or "video" or "sticker")
+            {
+                if (msg.TryGetProperty(msgType, out var mediaObj))
+                {
+                    mediaId    = mediaObj.TryGetProperty("id", out var mid) ? mid.GetString() : null;
+                    mediaMime  = mediaObj.TryGetProperty("mime_type", out var mime) ? mime.GetString() : null;
+                    mediaNombre = mediaObj.TryGetProperty("filename", out var fn) ? fn.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(texto))
+                        texto = mediaObj.TryGetProperty("caption", out var cap) ? cap.GetString() : null;
+                }
+            }
+
             // Nombre del contacto si viene en el payload
             string? nombre = null;
             if (value.TryGetProperty("contacts", out var contacts))
@@ -177,6 +212,31 @@ public class WhatsAppWebhookController : ControllerBase
             _logger.LogInformation(
                 "WhatsApp mensaje entrante: {MessageId} de {From} ({Nombre}): {Tipo} — {Texto}",
                 messageId, from, nombre ?? "desconocido", msgType, texto ?? "(no texto)");
+
+            // Guardar en bandeja de conversaciones
+            if (!string.IsNullOrWhiteSpace(from))
+            {
+                try
+                {
+                    var convId = await _conversaciones.GetOrCreateConversacionAsync(from, nombre);
+                    await _conversaciones.SaveMensajeAsync(new WhatsAppMensaje
+                    {
+                        ConversacionId    = convId,
+                        WhatsappMessageId = messageId,
+                        Direccion         = "entrante",
+                        TipoContenido     = msgType ?? "texto",
+                        Contenido         = texto,
+                        MediaId           = mediaId,
+                        MediaTipoMime     = mediaMime,
+                        MediaNombre       = mediaNombre,
+                        Estado            = "recibido"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error guardando mensaje entrante en bandeja para {From}", from);
+                }
+            }
 
             await _auditoria.RegistrarAsync(
                 "WHATSAPP_MENSAJE_RECIBIDO",

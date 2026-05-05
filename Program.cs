@@ -148,6 +148,7 @@ builder.Services.AddScoped<EmpresaConfiguracionRepository>();
 builder.Services.AddScoped<GastoRepository>();
 builder.Services.AddScoped<CatalogoRepository>();
 builder.Services.AddScoped<WhatsAppEnvioLogRepository>();
+builder.Services.AddScoped<WhatsAppConversacionRepository>();
 builder.Services.AddScoped<ReclamoPatronesRepository>();
 builder.Services.AddScoped<PhoneNormalizationService>();
 builder.Services.AddScoped<CarteraImportService>();
@@ -266,6 +267,9 @@ using (var scope = app.Services.CreateScope())
 {
     var pagos = scope.ServiceProvider.GetRequiredService<PagoRepository>();
     await pagos.EnsureSchemaAsync();
+
+    var conversaciones = scope.ServiceProvider.GetRequiredService<WhatsAppConversacionRepository>();
+    await conversaciones.EnsureSchemaAsync();
 
     // Inicializar schema de seguridad (Users, user_sessions) al arranque
     var users = scope.ServiceProvider.GetRequiredService<UserRepository>();
