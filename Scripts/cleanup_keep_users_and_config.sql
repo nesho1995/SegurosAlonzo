@@ -8,7 +8,6 @@ TRUNCATE TABLE cliente_telefonos;
 TRUNCATE TABLE poliza_pagos;
 TRUNCATE TABLE poliza_cuotas;
 TRUNCATE TABLE polizas;
-TRUNCATE TABLE vehiculo_cambios;
 TRUNCATE TABLE vehiculo_historial;
 TRUNCATE TABLE vehiculos;
 TRUNCATE TABLE clientes;
@@ -25,17 +24,9 @@ TRUNCATE TABLE notificaciones_internas;
 TRUNCATE TABLE comisiones_detalle;
 TRUNCATE TABLE comisiones_lotes;
 TRUNCATE TABLE gastos;
-TRUNCATE TABLE cotizacion_archivos;
-TRUNCATE TABLE cotizacion_comparativos;
-TRUNCATE TABLE cotizacion_datos_extraidos;
-TRUNCATE TABLE cotizacion_envios;
-TRUNCATE TABLE cotizacion_mapeos_aseguradora;
-TRUNCATE TABLE cotizacion_oportunidades;
 TRUNCATE TABLE carteraclientes;
 
 -- Operacion de talleres
-TRUNCATE TABLE taller_aseguradoras;
-TRUNCATE TABLE taller_ramos;
 TRUNCATE TABLE talleres_detectados;
 TRUNCATE TABLE talleres;
 

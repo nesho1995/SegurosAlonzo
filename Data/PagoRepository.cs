@@ -70,10 +70,9 @@ public class PagoRepository
                 parameters.Add(pMonto, montoCuota);
             }
 
-            var batchSql = $@"INSERT INTO poliza_cuotas (poliza_id, numero_cuota, fecha_vencimiento, monto, estado)
-VALUES {string.Join(",", valores)}
-ON DUPLICATE KEY UPDATE
-    monto = IF(monto = 0 AND VALUES(monto) > 0, VALUES(monto), monto);";
+            // INSERT IGNORE: si la cuota ya existe (creada por la importacion con montos reales),
+            // NO se sobreescribe. GenerarCuotasAsync solo crea cuotas faltantes.
+            var batchSql = $"INSERT IGNORE INTO poliza_cuotas (poliza_id, numero_cuota, fecha_vencimiento, monto, estado) VALUES {string.Join(",", valores)};";
             creadas += await cn.ExecuteAsync(batchSql, parameters);
         }
 

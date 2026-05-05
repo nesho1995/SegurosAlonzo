@@ -1321,6 +1321,23 @@ public class CarteraRepository
             cn.Open();
         using var tx = cn.BeginTransaction();
 
+        // Si todos los montos son 0 o nulos, calcular desde prima_total de la poliza
+        var montosEfectivos = montos.Take(cuotas).Select(m => m ?? 0m).ToList();
+        if (montosEfectivos.All(m => m == 0m))
+        {
+            var primaTotal = await cn.ExecuteScalarAsync<decimal?>(
+                "SELECT prima_total FROM polizas WHERE id = @polizaId;",
+                new { polizaId }, tx);
+            if (primaTotal is > 0)
+            {
+                var montoBase = Math.Round(primaTotal.Value / cuotas, 2, MidpointRounding.AwayFromZero);
+                for (var k = 0; k < cuotas; k++)
+                    montosEfectivos[k] = k == cuotas - 1
+                        ? Math.Round(primaTotal.Value - montoBase * (cuotas - 1), 2, MidpointRounding.AwayFromZero)
+                        : montoBase;
+            }
+        }
+
         for (var i = 1; i <= cuotas; i++)
         {
             await cn.ExecuteAsync(@"
@@ -1338,7 +1355,7 @@ public class CarteraRepository
                 polizaId,
                 numeroCuota = i,
                 fechaVencimiento = fechaInicio.AddMonths(i - 1),
-                monto = montos[i - 1] ?? 0m
+                monto = montosEfectivos[i - 1]
             }, tx);
         }
 
