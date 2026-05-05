@@ -92,6 +92,6 @@ sleep 3
 systemctl is-active "$ServiceName"
 "@
 
-$remoteScript | ssh $HostAlias "tr -d '\015' | bash -s"
+$remoteScript | ssh $HostAlias "sed 's/^\xef\xbb\xbf//' | tr -d '\015' | bash -s"
 
 Write-Host "Done. Site should be live at https://corredurialonzo.com/"

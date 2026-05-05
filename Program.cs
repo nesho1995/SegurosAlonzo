@@ -255,11 +255,21 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Inicializar schema de pagos una sola vez al arranque
+// Fijar zona horaria de Honduras (CST, UTC-6) para todos los DateTime.Now del proceso
+TimeZoneInfo hondurasZone;
+try { hondurasZone = TimeZoneInfo.FindSystemTimeZoneById("America/Tegucigalpa"); }
+catch { hondurasZone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time"); }
+Environment.SetEnvironmentVariable("TZ", "America/Tegucigalpa");
+
+// Inicializar schemas una sola vez al arranque
 using (var scope = app.Services.CreateScope())
 {
     var pagos = scope.ServiceProvider.GetRequiredService<PagoRepository>();
     await pagos.EnsureSchemaAsync();
+
+    // Inicializar schema de seguridad (Users, user_sessions) al arranque
+    var users = scope.ServiceProvider.GetRequiredService<UserRepository>();
+    await users.EnsureSchemaPublicAsync();
 
     // Asegurar que las columnas opcionales existan antes de sincronizar estados
     var cartera = scope.ServiceProvider.GetRequiredService<CarteraRepository>();

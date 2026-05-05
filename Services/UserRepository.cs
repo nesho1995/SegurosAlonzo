@@ -283,6 +283,13 @@ namespace ReclamosWhatsApp.Services
                 new { userId, currentSessionId });
         }
 
+        /// <summary>Llamar una sola vez al arranque desde Program.cs.</summary>
+        public async Task EnsureSchemaPublicAsync()
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+        }
+
         private static Task EnsureSecuritySchemaAsync(System.Data.IDbConnection connection)
         {
             return connection.ExecuteAsync(@"
