@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using MySqlConnector;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
@@ -75,6 +76,7 @@ public class ConfiguracionEmpresaApiController : ControllerBase
 
     [HttpPost("logo")]
     [Authorize(Policy = Permissions.ConfiguracionAdministrar)]
+    [EnableRateLimiting("upload")]
     public async Task<IActionResult> UploadLogo([FromForm] IFormFile archivo)
     {
         if (archivo is null || archivo.Length == 0)

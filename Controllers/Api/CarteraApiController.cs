@@ -88,18 +88,33 @@ public class CarteraApiController : ControllerBase
         if (poliza is null)
             return NotFound();
 
-        var cuotas = (await _cartera.GetCuotasByPolizaAsync(id)).ToList();
+        // Para polizas de grupo financiero, mostrar las cuotas de la poliza maestra
+        var cuotaSourceId = id;
+        if (poliza.ClienteContratanteId.HasValue)
+            cuotaSourceId = await _cartera.GetFinancialMasterPolizaIdAsync(id);
+
+        var cuotas = (await _cartera.GetCuotasByPolizaAsync(cuotaSourceId)).ToList();
         var totalCuotas = poliza.Cuotas.HasValue && poliza.Cuotas.Value > 0
             ? Math.Min(poliza.Cuotas.Value, 12)
             : Math.Min(Math.Max(cuotas.Count, 1), 12);
+
+        // Fecha de inicio para calcular vencimientos estimados cuando no hay cuotas reales
+        var fechaBase = poliza.Vigencia ?? DateTime.Today;
+        // Monto estimado por cuota cuando no hay cuotas reales
+        var montoEstimado = (poliza.PrimaTotal.HasValue && poliza.PrimaTotal.Value > 0 && totalCuotas > 0)
+            ? Math.Round(poliza.PrimaTotal.Value / totalCuotas, 2, MidpointRounding.AwayFromZero)
+            : 0m;
+
         var espacios = Enumerable.Range(1, totalCuotas)
             .Select(numero => cuotas.FirstOrDefault(x => x.NumeroCuota == numero) ?? new PolizaCuota
             {
-                PolizaId = id,
+                PolizaId = cuotaSourceId,
                 ClienteId = poliza.ClienteId,
                 NumeroPoliza = poliza.NumeroPoliza,
                 NumeroCuota = numero,
-                Estado = "PENDIENTE"
+                Estado = "PENDIENTE",
+                FechaVencimiento = fechaBase.AddMonths(numero - 1),
+                Monto = montoEstimado
             });
 
         return Ok(new { items = espacios });
@@ -497,7 +512,15 @@ public class CarteraApiController : ControllerBase
             Cuotas          = cuotas.Select(c => new CuotaPdf(c.NumeroCuota, c.FechaVencimiento, c.Monto, c.Estado)).ToList()
         };
 
-        var bytes    = pdf.GenerarResumenPoliza(datos);
+        byte[] bytes;
+        try
+        {
+            bytes = pdf.GenerarResumenPoliza(datos);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = $"Error al generar PDF: {ex.GetType().Name}: {ex.Message}" });
+        }
         var filename = $"poliza_{poliza.NumeroPoliza ?? polizaId.ToString()}_{DateTime.Now:yyyyMMdd}.pdf";
         return File(bytes, "application/pdf", filename);
     }

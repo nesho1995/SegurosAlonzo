@@ -6,8 +6,15 @@ appsettings.json
 # Build outputs
 bin/
 obj/
-ClientApp/dist/
+ClientApp/dist/*
+!ClientApp/dist/index.html
+!ClientApp/dist/assets/
+!ClientApp/dist/assets/**
 ClientApp/node_modules/
+publish/
+seguros-alonzo-deploy.zip
+seguros-alonzo-deploy.tar.gz
+Backups/
 
 # Logs and local runtime files
 *.log

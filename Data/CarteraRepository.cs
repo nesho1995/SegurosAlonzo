@@ -866,16 +866,20 @@ public class CarteraRepository
 
         // Pólizas compartidas: misma numero_poliza para varios clientes debe contarse UNA sola vez.
         // Agrupa por IFNULL(NULLIF(numero_poliza,''), id) y toma MIN(id) como representante.
-        string Dedup(string extraWhere = "")
-        {
-            var w = string.IsNullOrEmpty(extraWhere) ? polizaWhere : AppendWhere(polizaWhere, extraWhere);
-            return $"SELECT MIN(p.id) id FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {w} GROUP BY IFNULL(NULLIF(p.numero_poliza,''), p.id)";
-        }
-
         var sql = $@"
             SELECT
-                (SELECT COUNT(DISTINCT c.id) FROM clientes c WHERE (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)) TotalClientes,
-                (SELECT COUNT(DISTINCT c.id) FROM clientes c WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)) ClientesActivos,
+                (SELECT COUNT(DISTINCT c.id) FROM clientes c
+                 WHERE (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)
+                   AND NOT (
+                       EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id)
+                       AND NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id)
+                   )) TotalClientes,
+                (SELECT COUNT(DISTINCT c.id) FROM clientes c
+                 WHERE c.activo = 1 AND (@ciudad IS NULL OR c.ciudad LIKE @ciudadLike)
+                   AND NOT (
+                       EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_contratante_id = c.id)
+                       AND NOT EXISTS (SELECT 1 FROM polizas px WHERE px.cliente_id = c.id)
+                   )) ClientesActivos,
                 (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {polizaWhere}) TotalPolizas,
                 (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1")}) PolizasActivas,
                 (SELECT COUNT(DISTINCT {FinancialKeySql}) FROM polizas p INNER JOIN clientes c ON c.id = p.cliente_id {AppendWhere(polizaWhere, "p.activo = 1 AND p.hasta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)")}) PolizasPorVencer30,

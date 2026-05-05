@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Download, FileText, Pencil, Plus, Power, Save, X } from 'lucide-react'
 import { cambiarEstadoCliente, cambiarEstadoPoliza, createCliente, createPoliza, getClienteDetalle, getClientes, getPolizaCuotas, marcarClienteRevisado, updateCliente, updatePoliza, updatePolizaCuotaMonto } from '../api/carteraApi'
+import { actualizarFechaCuota } from '../api/pagosApi'
 import { getCatalogoByTipo } from '../api/catalogosApi'
 import { StatusPill } from '../components/Badge'
 import { LoadingCard } from '../components/LoadingState'
@@ -679,19 +680,30 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
   const [message, setMessage] = useState<string | null>(null)
   const [savingCuotaId, setSavingCuotaId] = useState<number | null>(null)
   const [amountDrafts, setAmountDrafts] = useState<Record<number, string>>({})
+  const [fechaDrafts, setFechaDrafts] = useState<Record<number, string>>({})
   const [editingCuotaId, setEditingCuotaId] = useState<number | null>(null)
-  const [expandedCuotaDocId, setExpandedCuotaDocId] = useState<number | null>(null)
 
-  async function loadInstallments() {
-    const data = await getPolizaCuotas(policyId)
-    setItems(data.items)
+  function applyDrafts(items: PolicyInstallment[]) {
     setAmountDrafts((current) => {
       const next = { ...current }
-      for (const item of data.items) {
+      for (const item of items) {
         if (item.id && next[item.id] === undefined) next[item.id] = String(item.monto ?? 0)
       }
       return next
     })
+    setFechaDrafts((current) => {
+      const next = { ...current }
+      for (const item of items) {
+        if (item.id && next[item.id] === undefined) next[item.id] = item.fechaVencimiento?.slice(0, 10) ?? ''
+      }
+      return next
+    })
+  }
+
+  async function loadInstallments() {
+    const data = await getPolizaCuotas(policyId)
+    setItems(data.items)
+    applyDrafts(data.items)
   }
 
   useEffect(() => {
@@ -700,13 +712,7 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
       .then((data) => {
         if (!alive) return
         setItems(data.items)
-        setAmountDrafts((current) => {
-          const next = { ...current }
-          for (const item of data.items) {
-            if (item.id && next[item.id] === undefined) next[item.id] = String(item.monto ?? 0)
-          }
-          return next
-        })
+        applyDrafts(data.items)
       })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : 'No se pudieron cargar las cuotas.')
@@ -744,37 +750,21 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
         <tbody>
           {slots.map((cuota) => (
             <Fragment key={cuota.numeroCuota}>
-              <tr className={cuota.id && (editingCuotaId === cuota.id || expandedCuotaDocId === cuota.id) ? 'cuota-row-active' : ''}>
+              <tr className={cuota.id && editingCuotaId === cuota.id ? 'cuota-row-active' : ''}>
                 <td className="cuota-num">{cuota.numeroCuota}</td>
                 <td>{cuota.fechaVencimiento ? dateFmt.format(new Date(cuota.fechaVencimiento)) : <span className="text-muted">—</span>}</td>
                 <td>{cuota.monto !== undefined ? moneySafe(cuota.monto) : <span className="text-muted">—</span>}</td>
                 <td><StatusPill text={statusLabel(cuota.estado)} tone={stateTone(cuota.estado)} /></td>
                 <td className="cuota-actions">
                   {cuota.id ? (
-                    <>
-                      <button
-                        className={`icon-button secondary compact${editingCuotaId === cuota.id ? ' active' : ''}`}
-                        type="button"
-                        title="Editar monto"
-                        onClick={() => {
-                          setEditingCuotaId(editingCuotaId === cuota.id ? null : cuota.id!)
-                          setExpandedCuotaDocId(null)
-                        }}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        className={`icon-button secondary compact${expandedCuotaDocId === cuota.id ? ' active' : ''}`}
-                        type="button"
-                        title="Comprobantes de cuota"
-                        onClick={() => {
-                          setExpandedCuotaDocId(expandedCuotaDocId === cuota.id ? null : cuota.id!)
-                          setEditingCuotaId(null)
-                        }}
-                      >
-                        <FileText size={13} />
-                      </button>
-                    </>
+                    <button
+                      className={`icon-button secondary compact${editingCuotaId === cuota.id ? ' active' : ''}`}
+                      type="button"
+                      title="Editar cuota"
+                      onClick={() => setEditingCuotaId(editingCuotaId === cuota.id ? null : cuota.id!)}
+                    >
+                      <Pencil size={13} />
+                    </button>
                   ) : <span className="text-muted">—</span>}
                 </td>
               </tr>
@@ -796,6 +786,19 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
                           }}
                         />
                       </label>
+                      <label className="field compact-field">
+                        <span>Fecha vencimiento</span>
+                        <input
+                          type="date"
+                          value={fechaDrafts[cuota.id] ?? cuota.fechaVencimiento?.slice(0, 10) ?? ''}
+                          disabled={cuota.estado === 'PAGADA'}
+                          title={cuota.estado === 'PAGADA' ? 'Las cuotas pagadas no permiten cambiar vencimiento.' : undefined}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setFechaDrafts((current) => ({ ...current, [cuota.id!]: value }))
+                          }}
+                        />
+                      </label>
                       <div className="cuota-edit-actions">
                         <button
                           className="primary-button"
@@ -812,11 +815,15 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
                             setError(null)
                             try {
                               await updatePolizaCuotaMonto(cuota.id!, parsed)
+                              const fecha = fechaDrafts[cuota.id!]
+                              if (fecha && cuota.estado !== 'PAGADA') {
+                                await actualizarFechaCuota(cuota.id!, fecha)
+                              }
                               await loadInstallments()
-                              setMessage(`Monto guardado en cuota ${cuota.numeroCuota}.`)
+                              setMessage(`Cuota ${cuota.numeroCuota} actualizada.`)
                               setEditingCuotaId(null)
                             } catch (err) {
-                              setError(err instanceof Error ? err.message : 'No se pudo guardar el monto de la cuota.')
+                              setError(err instanceof Error ? err.message : 'No se pudo guardar la cuota.')
                             } finally {
                               setSavingCuotaId(null)
                             }
@@ -829,14 +836,6 @@ function PolicyInstallmentsTable({ policyId, totalCuotas }: { policyId: number; 
                         </button>
                       </div>
                     </div>
-                  </td>
-                </tr>
-              )}
-
-              {cuota.id && expandedCuotaDocId === cuota.id && (
-                <tr className="cuota-row-detail">
-                  <td colSpan={5}>
-                    <DocumentosPanel entidadTipo="PAGO" entidadId={cuota.id} compact />
                   </td>
                 </tr>
               )}

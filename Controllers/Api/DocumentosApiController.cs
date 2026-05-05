@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
@@ -25,6 +26,7 @@ public class DocumentosApiController : ControllerBase
 
     [HttpPost("upload")]
     [Authorize(Policy = Permissions.DocumentosSubir)]
+    [EnableRateLimiting("upload")]
     public async Task<IActionResult> Upload([FromForm] IFormFile archivo, [FromForm] string entidadTipo, [FromForm] int entidadId, [FromForm] string? tipoDocumento)
     {
         try

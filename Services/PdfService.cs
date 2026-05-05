@@ -13,6 +13,7 @@ public class PdfService
     static PdfService()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        QuestPDF.Settings.UseEnvironmentFonts = true;
     }
 
     // ── Reporte de cartera (lista de pólizas) ─────────────────────────────
@@ -25,21 +26,21 @@ public class PdfService
             {
                 page.Size(PageSizes.A4.Landscape());
                 page.Margin(20);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+                page.DefaultTextStyle(t => t.FontSize(9).FontFamily(Fonts.Lato));
 
-                page.Header().Element(header =>
+                page.Header().Column(hcol =>
                 {
-                    header.Row(row =>
+                    hcol.Item().Row(row =>
                     {
                         row.RelativeItem().Column(col =>
                         {
-                            col.Item().Text(titulo).FontSize(14).Bold().FontColor("#0f5f59");
+                            col.Item().Text(t => t.Span(titulo).FontSize(14).Bold().FontColor("#0f5f59"));
                             if (filtro != null)
-                                col.Item().Text(filtro).FontSize(9).FontColor("#6b7280");
+                                col.Item().Text(t => t.Span(filtro).FontSize(9).FontColor("#6b7280"));
                         });
                         row.ConstantItem(160).AlignRight().Column(col =>
                         {
-                            col.Item().Text($"Generado: {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(8).FontColor("#9ca3af");
+                            col.Item().Text(t => t.Span($"Generado: {DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(8).FontColor("#9ca3af"));
                         });
                     });
                 });
@@ -48,47 +49,46 @@ public class PdfService
                 {
                     table.ColumnsDefinition(cols =>
                     {
-                        cols.ConstantColumn(30);   // #
-                        cols.RelativeColumn(3);    // Cliente
-                        cols.RelativeColumn(2);    // Póliza
-                        cols.RelativeColumn(2);    // Aseguradora
-                        cols.RelativeColumn(1.5f); // Ramo
-                        cols.RelativeColumn(1.5f); // Vigencia
-                        cols.RelativeColumn(1.5f); // Hasta
-                        cols.RelativeColumn(1.5f); // Prima
-                        cols.RelativeColumn(1.5f); // Estado
+                        cols.ConstantColumn(30);
+                        cols.RelativeColumn(3);
+                        cols.RelativeColumn(2);
+                        cols.RelativeColumn(2);
+                        cols.RelativeColumn(1.5f);
+                        cols.RelativeColumn(1.5f);
+                        cols.RelativeColumn(1.5f);
+                        cols.RelativeColumn(1.5f);
+                        cols.RelativeColumn(1.5f);
                     });
-
-                    // Encabezados
-                    static IContainer HeaderCell(IContainer c) =>
-                        c.Background("#172126").Padding(5).AlignCenter();
 
                     table.Header(h =>
                     {
                         foreach (var label in new[] { "#", "Cliente", "Póliza", "Aseguradora", "Ramo", "Vigencia", "Hasta", "Prima", "Estado" })
-                            h.Cell().Element(HeaderCell).Text(label).FontColor("#f8fafc").FontSize(8).Bold();
+                            h.Cell().Background("#172126").Padding(5).AlignCenter()
+                                .Text(t => t.Span(label).FontColor("#f8fafc").FontSize(8).Bold());
                     });
 
-                    // Filas
-                    var i = 0;
-                    foreach (var f in filas)
+                    var rowIndex = 0;
+                    foreach (var fila in filas)
                     {
-                        i++;
-                        var bg = i % 2 == 0 ? "#f2faf8" : "#ffffff";
-                        static IContainer DataCell(IContainer c, string bg) =>
-                            c.Background(bg).BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4);
+                        rowIndex++;
+                        var bg = rowIndex % 2 == 0 ? "#f2faf8" : "#ffffff";
 
-                        table.Cell().Element(c => DataCell(c, bg)).Text($"{i}").FontColor("#6b7280");
-                        table.Cell().Element(c => DataCell(c, bg)).Text(f.Cliente ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).Text(f.NumeroPoliza ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).Text(f.Aseguradora ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).Text(f.Ramo ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).AlignCenter().Text(f.Vigencia?.ToString("dd/MM/yy") ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).AlignCenter().Text(f.Hasta?.ToString("dd/MM/yy") ?? "—");
-                        table.Cell().Element(c => DataCell(c, bg)).AlignRight().Text(f.PrimaTotal > 0 ? $"L {f.PrimaTotal:N0}" : "—");
-                        table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
-                            .Text(f.Estado ?? "—")
-                            .FontColor(f.Estado == "ACTIVA" ? "#166534" : f.Estado == "VENCIDA" ? "#991b1b" : "#92400e");
+                        void DataCell(IContainer cell, Action<IContainer> content)
+                        {
+                            content(cell.Background(bg).BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4));
+                        }
+
+                        DataCell(table.Cell(), c => c.Text(t => t.Span($"{rowIndex}").FontColor("#6b7280")));
+                        DataCell(table.Cell(), c => c.Text(fila.Cliente ?? "—"));
+                        DataCell(table.Cell(), c => c.Text(fila.NumeroPoliza ?? "—"));
+                        DataCell(table.Cell(), c => c.Text(fila.Aseguradora ?? "—"));
+                        DataCell(table.Cell(), c => c.Text(fila.Ramo ?? "—"));
+                        DataCell(table.Cell(), c => c.AlignCenter().Text(fila.Vigencia?.ToString("dd/MM/yy") ?? "—"));
+                        DataCell(table.Cell(), c => c.AlignCenter().Text(fila.Hasta?.ToString("dd/MM/yy") ?? "—"));
+                        DataCell(table.Cell(), c => c.AlignRight().Text(fila.PrimaTotal > 0 ? $"L {fila.PrimaTotal:N0}" : "—"));
+
+                        var estadoColor = fila.Estado == "ACTIVA" ? "#166534" : fila.Estado == "VENCIDA" ? "#991b1b" : "#92400e";
+                        DataCell(table.Cell(), c => c.AlignCenter().Text(t => t.Span(fila.Estado ?? "—").FontColor(estadoColor)));
                     }
                 });
 
@@ -113,84 +113,98 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(t => t.FontSize(10).FontFamily("Arial"));
+                page.DefaultTextStyle(t => t.FontSize(10).FontFamily(Fonts.Lato));
 
-                page.Header().Element(h =>
+                // Header: Column wraps Row + separator line (two children need Column)
+                page.Header().Column(hcol =>
                 {
-                    h.Row(row =>
+                    hcol.Item().Row(row =>
                     {
                         row.RelativeItem().Column(col =>
                         {
-                            col.Item().Text("Resumen de Póliza").FontSize(18).Bold().FontColor("#0f5f59");
-                            col.Item().Text(datos.EmpresaNombre ?? "Correduría de Seguros").FontSize(10).FontColor("#6b7280");
+                            col.Item().Text(t => t.Span("Resumen de Póliza").FontSize(18).Bold().FontColor("#0f5f59"));
+                            col.Item().Text(t => t.Span(datos.EmpresaNombre ?? "Correduría de Seguros").FontSize(10).FontColor("#6b7280"));
                         });
-                        row.ConstantItem(120).Column(col =>
-                        {
-                            col.Item().AlignRight().Text(DateTime.Now.ToString("dd/MM/yyyy")).FontSize(9).FontColor("#9ca3af");
-                        });
+                        row.ConstantItem(120).AlignRight()
+                            .Text(t => t.Span(DateTime.Now.ToString("dd/MM/yyyy")).FontSize(9).FontColor("#9ca3af"));
                     });
-                    h.PaddingTop(6).LineHorizontal(1.5f).LineColor("#0f5f59");
+                    hcol.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#0f5f59");
                 });
 
                 page.Content().PaddingTop(16).Column(col =>
                 {
-                    static void SectionTitle(ColumnDescriptor col, string title)
+                    void SectionTitle(string title)
                     {
-                        col.Item().PaddingTop(12).PaddingBottom(4)
-                            .Text(title).FontSize(11).Bold().FontColor("#172126");
+                        col.Item().PaddingTop(12).PaddingBottom(2)
+                            .Text(t => t.Span(title).FontSize(11).Bold().FontColor("#172126"));
                         col.Item().LineHorizontal(0.5f).LineColor("#d8e4e0");
                     }
 
-                    static void Row(ColumnDescriptor col, string label, string? value)
+                    void InfoRow(string label, string? value)
                     {
                         col.Item().PaddingTop(4).Row(row =>
                         {
-                            row.ConstantItem(160).Text(label).FontColor("#6b7280");
+                            row.ConstantItem(160).Text(t => t.Span(label).FontColor("#6b7280"));
                             row.RelativeItem().Text(value ?? "—");
                         });
                     }
 
-                    SectionTitle(col, "Datos del Asegurado");
-                    Row(col, "Cliente", datos.ClienteNombre);
-                    Row(col, "Teléfono", datos.ClienteTelefono);
-                    Row(col, "Correo", datos.ClienteEmail);
+                    SectionTitle("Datos del Asegurado");
+                    InfoRow("Cliente", datos.ClienteNombre);
+                    InfoRow("Teléfono", datos.ClienteTelefono);
+                    InfoRow("Correo", datos.ClienteEmail);
 
-                    SectionTitle(col, "Datos de la Póliza");
-                    Row(col, "Número de póliza", datos.NumeroPoliza);
-                    Row(col, "Aseguradora", datos.Aseguradora);
-                    Row(col, "Ramo", datos.Ramo);
-                    Row(col, "Vigencia", datos.Vigencia?.ToString("dd/MM/yyyy"));
-                    Row(col, "Vencimiento", datos.Hasta?.ToString("dd/MM/yyyy"));
-                    Row(col, "Prima total", datos.PrimaTotal > 0 ? $"L {datos.PrimaTotal:N2}" : null);
-                    Row(col, "Forma de pago", datos.FormaPago);
-                    Row(col, "Estado", datos.Estado);
+                    SectionTitle("Datos de la Póliza");
+                    InfoRow("Número de póliza", datos.NumeroPoliza);
+                    InfoRow("Aseguradora", datos.Aseguradora);
+                    InfoRow("Ramo", datos.Ramo);
+                    InfoRow("Vigencia", datos.Vigencia?.ToString("dd/MM/yyyy"));
+                    InfoRow("Vencimiento", datos.Hasta?.ToString("dd/MM/yyyy"));
+                    InfoRow("Prima total", datos.PrimaTotal > 0 ? $"L {datos.PrimaTotal:N2}" : null);
+                    InfoRow("Forma de pago", datos.FormaPago);
+                    InfoRow("Estado", datos.Estado);
 
                     if (!string.IsNullOrWhiteSpace(datos.Vehiculo))
                     {
-                        SectionTitle(col, "Vehículo Asegurado");
-                        Row(col, "Descripción", datos.Vehiculo);
-                        Row(col, "Placa", datos.Placa);
+                        SectionTitle("Vehículo Asegurado");
+                        InfoRow("Descripción", datos.Vehiculo);
+                        InfoRow("Placa", datos.Placa);
                     }
 
                     if (datos.Cuotas?.Count > 0)
                     {
-                        SectionTitle(col, "Plan de Cuotas");
+                        SectionTitle("Plan de Cuotas");
                         col.Item().PaddingTop(6).Table(table =>
                         {
-                            table.ColumnsDefinition(c => { c.ConstantColumn(40); c.RelativeColumn(); c.RelativeColumn(); c.RelativeColumn(); });
+                            table.ColumnsDefinition(def =>
+                            {
+                                def.ConstantColumn(40);
+                                def.RelativeColumn();
+                                def.RelativeColumn();
+                                def.RelativeColumn();
+                            });
+
                             table.Header(h =>
                             {
                                 foreach (var label in new[] { "N°", "Vencimiento", "Monto", "Estado" })
-                                    h.Cell().Background("#172126").Padding(4).Text(label).FontColor("#f8fafc").FontSize(8).Bold();
+                                    h.Cell().Background("#172126").Padding(4)
+                                        .Text(t => t.Span(label).FontColor("#f8fafc").FontSize(8).Bold());
                             });
-                            foreach (var c in datos.Cuotas)
+
+                            foreach (var cuota in datos.Cuotas)
                             {
-                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4).Text($"{c.Numero}");
-                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4).Text(c.Fecha?.ToString("dd/MM/yyyy") ?? "—");
-                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4).AlignRight().Text(c.Monto > 0 ? $"L {c.Monto:N2}" : "—");
+                                var estadoColor = cuota.Estado == "PAGADA" ? "#166534"
+                                    : cuota.Estado == "VENCIDA" ? "#991b1b"
+                                    : "#374151";
+
+                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4)
+                                    .Text($"{cuota.Numero}");
+                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4)
+                                    .Text(cuota.Fecha?.ToString("dd/MM/yyyy") ?? "—");
+                                table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4).AlignRight()
+                                    .Text(cuota.Monto > 0 ? $"L {cuota.Monto:N2}" : "—");
                                 table.Cell().BorderBottom(0.5f).BorderColor("#e5eeec").Padding(4).AlignCenter()
-                                    .Text(c.Estado ?? "—")
-                                    .FontColor(c.Estado == "PAGADA" ? "#166534" : c.Estado == "VENCIDA" ? "#991b1b" : "#374151");
+                                    .Text(t => t.Span(cuota.Estado ?? "—").FontColor(estadoColor));
                             }
                         });
                     }
