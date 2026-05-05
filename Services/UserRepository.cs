@@ -17,7 +17,7 @@ namespace ReclamosWhatsApp.Services
         public async Task<User?> GetUserByUsernameAsync(string username, bool includeInactive = false)
         {
             using var connection = _db.CreateConnection();
-            await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN IF NOT EXISTS CustomPermissionsJson TEXT NULL;");
+            await EnsureSecuritySchemaAsync(connection);
             var sql = @"
                 SELECT
                     u.Id,
@@ -65,7 +65,7 @@ namespace ReclamosWhatsApp.Services
         public async Task<IEnumerable<UserAdminViewModel>> GetUsersAsync()
         {
             using var connection = _db.CreateConnection();
-            await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN IF NOT EXISTS CustomPermissionsJson TEXT NULL;");
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 SELECT
                     u.Id,
@@ -138,7 +138,7 @@ namespace ReclamosWhatsApp.Services
         public async Task UpdateUserPermissionsAsync(int id, IEnumerable<string> permissions)
         {
             using var connection = _db.CreateConnection();
-            await connection.ExecuteAsync("ALTER TABLE Users ADD COLUMN IF NOT EXISTS CustomPermissionsJson TEXT NULL;");
+            await EnsureSecuritySchemaAsync(connection);
             var valid = permissions
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim())
@@ -159,6 +159,7 @@ namespace ReclamosWhatsApp.Services
         public async Task RegisterFailedLoginAsync(int id)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 UPDATE Users
                 SET FailedLoginAttempts = FailedLoginAttempts + 1,
@@ -171,12 +172,14 @@ namespace ReclamosWhatsApp.Services
         public async Task ResetFailedLoginAsync(int id)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             await connection.ExecuteAsync("UPDATE Users SET FailedLoginAttempts = 0, LockoutUntil = NULL WHERE Id = @id;", new { id });
         }
 
         public async Task ChangePasswordAsync(int id, string passwordHash)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 UPDATE Users
                 SET PasswordHash = @passwordHash,
@@ -186,6 +189,109 @@ namespace ReclamosWhatsApp.Services
                 WHERE Id = @id;";
 
             await connection.ExecuteAsync(sql, new { id, passwordHash });
+        }
+
+        public async Task<int> CountActiveSessionsAsync(int userId)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            return await connection.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(*)
+                FROM user_sessions
+                WHERE user_id = @userId
+                  AND revoked_at IS NULL
+                  AND expires_at > UTC_TIMESTAMP();", new { userId });
+        }
+
+        public async Task<string> CreateSessionAsync(int userId, string? ipAddress, string? userAgent, DateTime expiresAtUtc)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET revoked_at = UTC_TIMESTAMP()
+                WHERE user_id = @userId
+                  AND revoked_at IS NULL
+                  AND expires_at <= UTC_TIMESTAMP();", new { userId });
+
+            var sessionId = Guid.NewGuid().ToString("N");
+            await connection.ExecuteAsync(@"
+                INSERT INTO user_sessions (id, user_id, ip_address, user_agent, created_at, last_seen_at, expires_at)
+                VALUES (@sessionId, @userId, @ipAddress, @userAgent, UTC_TIMESTAMP(), UTC_TIMESTAMP(), @expiresAtUtc);",
+                new { sessionId, userId, ipAddress, userAgent = Truncate(userAgent, 512), expiresAtUtc });
+            return sessionId;
+        }
+
+        public async Task<bool> TouchSessionAsync(int userId, string sessionId, DateTime expiresAtUtc)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            var affected = await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET last_seen_at = UTC_TIMESTAMP(),
+                    expires_at = @expiresAtUtc
+                WHERE id = @sessionId
+                  AND user_id = @userId
+                  AND revoked_at IS NULL
+                  AND expires_at > UTC_TIMESTAMP();", new { userId, sessionId, expiresAtUtc });
+            return affected > 0;
+        }
+
+        public async Task RevokeSessionAsync(int userId, string sessionId)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET revoked_at = UTC_TIMESTAMP()
+                WHERE id = @sessionId
+                  AND user_id = @userId
+                  AND revoked_at IS NULL;", new { userId, sessionId });
+        }
+
+        public async Task RevokeOtherSessionsAsync(int userId, string? currentSessionId)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET revoked_at = UTC_TIMESTAMP()
+                WHERE user_id = @userId
+                  AND revoked_at IS NULL
+                  AND (@currentSessionId IS NULL OR id <> @currentSessionId);",
+                new { userId, currentSessionId });
+        }
+
+        private static Task EnsureSecuritySchemaAsync(System.Data.IDbConnection connection)
+        {
+            return connection.ExecuteAsync(@"
+                ALTER TABLE Users
+                    ADD COLUMN IF NOT EXISTS CustomPermissionsJson TEXT NULL,
+                    ADD COLUMN IF NOT EXISTS FailedLoginAttempts INT NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS LockoutUntil DATETIME NULL,
+                    ADD COLUMN IF NOT EXISTS LastPasswordChange DATETIME NULL;
+
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id CHAR(32) NOT NULL PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    ip_address VARCHAR(64) NULL,
+                    user_agent VARCHAR(512) NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME NOT NULL,
+                    revoked_at DATETIME NULL,
+                    INDEX ix_user_sessions_user_active (user_id, revoked_at, expires_at),
+                    CONSTRAINT fk_user_sessions_user
+                        FOREIGN KEY (user_id) REFERENCES Users(Id)
+                        ON DELETE CASCADE
+                );");
+        }
+
+        private static string? Truncate(string? value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+                return value;
+            return value[..maxLength];
         }
     }
 }

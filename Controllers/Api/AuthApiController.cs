@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
 
@@ -24,6 +25,7 @@ public class AuthApiController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
         var username = request.Username.Trim();
@@ -64,7 +66,19 @@ public class AuthApiController : ControllerBase
         }
 
         await _users.ResetFailedLoginAsync(user.Id);
-        await SignInAsync(user);
+        var activeSessions = await _users.CountActiveSessionsAsync(user.Id);
+        if (activeSessions >= 2)
+        {
+            await _auditoria.RegistrarAsync("LOGIN_BLOQUEADO_SESIONES", "USUARIO", user.Id, "Intento de login bloqueado por limite de 2 sesiones activas.");
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Este usuario ya tiene 2 sesiones activas. Cierra una sesion antes de entrar de nuevo." });
+        }
+
+        var sessionId = await _users.CreateSessionAsync(
+            user.Id,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            DateTime.UtcNow.AddHours(8));
+        await SignInAsync(user, sessionId);
         await _auditoria.RegistrarAsync("LOGIN_EXITOSO", "USUARIO", user.Id, "Inicio de sesion correcto.");
 
         return Ok(ToSession(user));
@@ -88,6 +102,9 @@ public class AuthApiController : ControllerBase
     public async Task<IActionResult> Logout()
     {
         var userId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : (int?)null;
+        var sessionId = User.FindFirstValue("sid");
+        if (userId.HasValue && !string.IsNullOrWhiteSpace(sessionId))
+            await _users.RevokeSessionAsync(userId.Value, sessionId);
         await _auditoria.RegistrarAsync("LOGOUT", "USUARIO", userId, "Cierre de sesion.");
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Ok(new { message = "Sesion cerrada." });
@@ -111,11 +128,12 @@ public class AuthApiController : ControllerBase
             return BadRequest(new { error = "La contrasena actual no es correcta." });
 
         await _users.ChangePasswordAsync(user.Id, BCrypt.Net.BCrypt.HashPassword(request.NewPassword));
+        await _users.RevokeOtherSessionsAsync(user.Id, User.FindFirstValue("sid"));
         await _auditoria.RegistrarAsync("CAMBIO_PASSWORD", "USUARIO", user.Id, "Cambio de contrasena.");
         return Ok(new { message = "Contrasena actualizada." });
     }
 
-    private async Task SignInAsync(Models.User user)
+    private async Task SignInAsync(Models.User user, string sessionId)
     {
         var role = Permissions.NormalizeRole(user.Role?.Name);
         var effectivePermissions = ResolvePermissions(user, role);
@@ -123,7 +141,8 @@ public class AuthApiController : ControllerBase
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, role)
+            new(ClaimTypes.Role, role),
+            new("sid", sessionId)
         };
         claims.AddRange(effectivePermissions.Select(permission => new Claim("perm", permission)));
 

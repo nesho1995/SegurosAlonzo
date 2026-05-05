@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.RateLimiting;
@@ -7,6 +8,7 @@ using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
 using ReclamosWhatsApp.Services.DataQuality;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +35,16 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 2
+            }));
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
             }));
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (ctx, _) =>
@@ -66,6 +78,29 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
             context.Response.Redirect("/login");
             return Task.CompletedTask;
+        };
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var userIdRaw = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+            var sessionId = context.Principal?.FindFirstValue("sid");
+            if (!int.TryParse(userIdRaw, out var userId) || string.IsNullOrWhiteSpace(sessionId))
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            var users = context.HttpContext.RequestServices.GetRequiredService<UserRepository>();
+            var isValid = await users.TouchSessionAsync(
+                userId,
+                sessionId,
+                DateTime.UtcNow.Add(options.ExpireTimeSpan));
+
+            if (!isValid)
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            }
         };
         options.Events.OnRedirectToAccessDenied = async context =>
         {
