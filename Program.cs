@@ -150,6 +150,7 @@ builder.Services.AddScoped<CatalogoRepository>();
 builder.Services.AddScoped<WhatsAppEnvioLogRepository>();
 builder.Services.AddScoped<WhatsAppConversacionRepository>();
 builder.Services.AddScoped<ReclamoPatronesRepository>();
+builder.Services.AddScoped<CorreoRevisionRepository>();
 builder.Services.AddScoped<PhoneNormalizationService>();
 builder.Services.AddScoped<CarteraImportService>();
 builder.Services.AddScoped<PolizaImportRulesService>();
@@ -278,6 +279,9 @@ using (var scope = app.Services.CreateScope())
     // Asegurar que las columnas opcionales existan antes de sincronizar estados
     var cartera = scope.ServiceProvider.GetRequiredService<CarteraRepository>();
     await cartera.EnsureImportSchemaAsync();
+
+    var correoRevision = scope.ServiceProvider.GetRequiredService<CorreoRevisionRepository>();
+    await correoRevision.EnsureSchemaAsync();
 
     // Sincronizar estados de pólizas vencidas al arrancar
     var actualizadas = await cartera.SincronizarEstadosPolizasAsync();

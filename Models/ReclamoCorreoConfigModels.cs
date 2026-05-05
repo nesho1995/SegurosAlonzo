@@ -74,6 +74,18 @@ public class CorreoProcesamientoDetalle
     public int? ReclamoId { get; set; }
 }
 
+public class CorreoRevisionItem
+{
+    public int Id { get; set; }
+    public string MessageId { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string Estado { get; set; } = "";
+    public string Motivo { get; set; } = "";
+    public int? ReclamoId { get; set; }
+    public string BodyPreview { get; set; } = "";
+    public DateTime FechaProcesamientoUtc { get; set; }
+}
+
 public class CorreoReclamoPatron
 {
     public int Id { get; set; }

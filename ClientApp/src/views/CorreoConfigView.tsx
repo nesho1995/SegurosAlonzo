@@ -1,42 +1,46 @@
 import { useEffect, useState } from 'react'
 import { getSmtpConfig, probarSmtp, updateSmtpConfig, type SmtpConfig } from '../api/configuracionApi'
-import { getReclamoCorreoConfig, getReclamoWorkerStatus, processReclamosNow, recoveryReclamos, saveReclamoCorreoConfig, testReclamoCorreoConnection } from '../api/reclamosConfigApi'
+import { getCorreoRevision, getReclamoCorreoConfig, getReclamoWorkerStatus, processReclamosNow, recoveryReclamos, saveReclamoCorreoConfig, testReclamoCorreoConnection } from '../api/reclamosConfigApi'
 import { ErrorCard } from '../components/ErrorAlert'
 import { Field, PanelTitle } from '../components/FormControls'
 import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
-import type { ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
+import type { CorreoRevisionItem, ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
 
 export function CorreoConfigView() {
   const [imapConfig, setImapConfig] = useState<ReclamoCorreoConfig | null>(null)
   const [smtpConfig, setSmtpConfig] = useState<SmtpConfig | null>(null)
   const [status, setStatus] = useState<ReclamoWorkerEstado | null>(null)
+  const [bandejaEstado, setBandejaEstado] = useState('TODOS')
+  const [bandeja, setBandeja] = useState<CorreoRevisionItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   async function load() {
     setError(null)
-    const [imap, smtp, workerStatus] = await Promise.all([getReclamoCorreoConfig(), getSmtpConfig(), getReclamoWorkerStatus()])
+    const [imap, smtp, workerStatus, revision] = await Promise.all([getReclamoCorreoConfig(), getSmtpConfig(), getReclamoWorkerStatus(), getCorreoRevision(bandejaEstado)])
     setImapConfig(imap)
     setSmtpConfig(smtp)
     setStatus(workerStatus)
+    setBandeja(revision.items)
   }
 
   useEffect(() => {
     let alive = true
-    Promise.all([getReclamoCorreoConfig(), getSmtpConfig(), getReclamoWorkerStatus()])
-      .then(([imap, smtp, workerStatus]) => {
+    Promise.all([getReclamoCorreoConfig(), getSmtpConfig(), getReclamoWorkerStatus(), getCorreoRevision(bandejaEstado)])
+      .then(([imap, smtp, workerStatus, revision]) => {
         if (!alive) return
         setImapConfig(imap)
         setSmtpConfig(smtp)
         setStatus(workerStatus)
+        setBandeja(revision.items)
       })
       .catch((err) => {
         if (!alive) return
         setError(err instanceof Error ? err.message : 'No se pudo cargar la configuracion de correo.')
       })
     return () => { alive = false }
-  }, [])
+  }, [bandejaEstado])
 
   async function saveImapConfig() {
     if (!imapConfig) return
@@ -121,6 +125,32 @@ export function CorreoConfigView() {
           </div>
         </article>
       )}
+
+      <article className="panel mt-panel">
+        <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+          <PanelTitle title="Bandeja de correos revisados" subtitle="Historial persistente de correos procesados, ignorados, duplicados y con error." />
+          <label className="field compact-field">
+            <span>Estado</span>
+            <select value={bandejaEstado} onChange={(event) => setBandejaEstado(event.target.value)}>
+              <option value="TODOS">Todos</option>
+              <option value="PROCESADO">Procesados</option>
+              <option value="IGNORADO">Ignorados</option>
+              <option value="DUPLICADO">Duplicados</option>
+              <option value="ERROR">Errores</option>
+            </select>
+          </label>
+        </div>
+        <div className="result-panel">
+          {bandeja.length === 0 && <div className="inline-alert info">Aun no hay correos en esta bandeja.</div>}
+          {bandeja.map((item) => (
+            <div key={item.id} className="renewal-row">
+              <strong>{item.estado}{item.reclamoId ? ` #${item.reclamoId}` : ''}</strong>
+              <span>{item.subject || 'Sin asunto'} - {item.motivo}</span>
+              {item.bodyPreview && <small>{item.bodyPreview}</small>}
+            </div>
+          ))}
+        </div>
+      </article>
     </>
   )
 }

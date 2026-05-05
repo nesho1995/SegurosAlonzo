@@ -12,6 +12,7 @@ public class ReclamoCorreoProcessingService
     private readonly ExtractorConfigurableService _extractorConfigurable;
     private readonly AutomationEngineService _automation;
     private readonly AppSettingsRepository _appSettings;
+    private readonly CorreoRevisionRepository _correoRevision;
     private readonly RecordatorioRepository _recordatorios;
     private readonly WhatsAppService _whatsApp;
     private readonly AutomaticWhatsAppService _automaticWhatsApp;
@@ -25,6 +26,7 @@ public class ReclamoCorreoProcessingService
         ExtractorConfigurableService extractorConfigurable,
         AutomationEngineService automation,
         AppSettingsRepository appSettings,
+        CorreoRevisionRepository correoRevision,
         RecordatorioRepository recordatorios,
         WhatsAppService whatsApp,
         AutomaticWhatsAppService automaticWhatsApp,
@@ -37,6 +39,7 @@ public class ReclamoCorreoProcessingService
         _extractorConfigurable = extractorConfigurable;
         _automation = automation;
         _appSettings = appSettings;
+        _correoRevision = correoRevision;
         _recordatorios = recordatorios;
         _whatsApp = whatsApp;
         _automaticWhatsApp = automaticWhatsApp;
@@ -59,7 +62,7 @@ public class ReclamoCorreoProcessingService
                     if (!await _extractor.EsCorreoDeReclamoAsync(email.Subject))
                     {
                         estado.CorreosIgnorados++;
-                        estado.Detalles.Add(Detalle(email, "IGNORADO", "El asunto no coincide con el patron de reclamo."));
+                        await RegistrarDetalleAsync(estado, email, "IGNORADO", "El asunto no coincide con el patron de reclamo.");
                         continue;
                     }
 
@@ -68,7 +71,7 @@ public class ReclamoCorreoProcessingService
                     if (await _repo.ExistsByMessageIdAsync(email.MessageId))
                     {
                         estado.CorreosDuplicados++;
-                        estado.Detalles.Add(Detalle(email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId."));
+                        await RegistrarDetalleAsync(estado, email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId.");
                         continue;
                     }
 
@@ -85,7 +88,7 @@ public class ReclamoCorreoProcessingService
                     reclamo.MensajeWhatsApp = await _messageBuilder.GenerateMessageAsync(reclamo);
                     reclamo.Estado = "PENDIENTE_ENVIO";
                     var reclamoId = await _repo.InsertAsync(reclamo);
-                    estado.Detalles.Add(Detalle(email, "PROCESADO", $"Reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamoId.ToString()} creado.", reclamoId));
+                    await RegistrarDetalleAsync(estado, email, "PROCESADO", $"Reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamoId.ToString()} creado.", reclamoId);
                     await SafeAutomationAsync("reclamo_nuevo", "RECLAMO", reclamoId, reclamo);
                     await _automaticWhatsApp.ProcesarReclamoNuevoAsync(reclamoId, reclamo);
                     procesados++;
@@ -93,7 +96,7 @@ public class ReclamoCorreoProcessingService
                 catch (Exception ex)
                 {
                     estado.CorreosConError++;
-                    estado.Detalles.Add(Detalle(email, "ERROR", ex.Message));
+                    await RegistrarDetalleAsync(estado, email, "ERROR", ex.Message);
                     _logger.LogError(ex, "Error procesando correo {Subject}", email.Subject);
                 }
             }
@@ -134,6 +137,13 @@ public class ReclamoCorreoProcessingService
             Motivo = motivo,
             ReclamoId = reclamoId
         };
+    }
+
+    private async Task RegistrarDetalleAsync(ReclamoWorkerEstado estado, EmailMessageDto email, string resultado, string motivo, int? reclamoId = null)
+    {
+        var detalle = Detalle(email, resultado, motivo, reclamoId);
+        estado.Detalles.Add(detalle);
+        await _correoRevision.UpsertAsync(detalle, email.Body);
     }
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)

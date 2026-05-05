@@ -16,6 +16,7 @@ public class ReclamosConfiguracionApiController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly AppSettingsRepository _settings;
     private readonly ReclamoPatronesRepository _patrones;
+    private readonly CorreoRevisionRepository _correoRevision;
     private readonly ReclamoPatronesService _patronesService;
     private readonly ReclamoCorreoProcessingService _processing;
     private readonly AuditoriaService _auditoria;
@@ -24,6 +25,7 @@ public class ReclamosConfiguracionApiController : ControllerBase
         IConfiguration configuration,
         AppSettingsRepository settings,
         ReclamoPatronesRepository patrones,
+        CorreoRevisionRepository correoRevision,
         ReclamoPatronesService patronesService,
         ReclamoCorreoProcessingService processing,
         AuditoriaService auditoria)
@@ -31,6 +33,7 @@ public class ReclamosConfiguracionApiController : ControllerBase
         _configuration = configuration;
         _settings = settings;
         _patrones = patrones;
+        _correoRevision = correoRevision;
         _patronesService = patronesService;
         _processing = processing;
         _auditoria = auditoria;
@@ -67,6 +70,12 @@ public class ReclamosConfiguracionApiController : ControllerBase
     public async Task<IActionResult> GetWorkerEstado()
     {
         return Ok(await _settings.GetReclamoWorkerEstadoAsync());
+    }
+
+    [HttpGet("correo-bandeja")]
+    public async Task<IActionResult> GetCorreoBandeja([FromQuery] string? estado = "TODOS", [FromQuery] int limit = 100)
+    {
+        return Ok(new { items = await _correoRevision.GetAsync(estado, limit) });
     }
 
     [HttpPost("probar-conexion")]

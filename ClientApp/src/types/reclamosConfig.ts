@@ -32,6 +32,17 @@ export type CorreoProcesamientoDetalle = {
   reclamoId?: number
 }
 
+export type CorreoRevisionItem = {
+  id: number
+  messageId: string
+  subject: string
+  estado: string
+  motivo: string
+  reclamoId?: number
+  bodyPreview: string
+  fechaProcesamientoUtc: string
+}
+
 export type CorreoReclamoPatron = {
   id: number
   nombre: string

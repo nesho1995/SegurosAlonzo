@@ -1,5 +1,5 @@
 import { getJson, postJson, requestJson, sendJson } from './http'
-import type { CorreoReclamoPatron, CorreoReclamoPlantilla, ProbarPatronesResult, ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
+import type { CorreoReclamoPatron, CorreoReclamoPlantilla, CorreoRevisionItem, ProbarPatronesResult, ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
 
 export function getReclamoCorreoConfig() { return getJson<ReclamoCorreoConfig>('/api/reclamos-config/correo') }
 export function saveReclamoCorreoConfig(config: ReclamoCorreoConfig) { return sendJson('/api/reclamos-config/correo', 'PUT', config) }
@@ -7,6 +7,7 @@ export function testReclamoCorreoConnection() { return postJson('/api/reclamos-c
 export function processReclamosNow() { return postJson<ReclamoWorkerEstado>('/api/reclamos-config/procesar-ahora', {}) }
 export function recoveryReclamos(hours = 72) { return postJson<ReclamoWorkerEstado>(`/api/reclamos-config/modo-recuperacion?horas=${hours}`, {}) }
 export function getReclamoWorkerStatus() { return getJson<ReclamoWorkerEstado>('/api/reclamos-config/worker-estado') }
+export function getCorreoRevision(estado = 'TODOS') { return getJson<{ items: CorreoRevisionItem[] }>(`/api/reclamos-config/correo-bandeja?estado=${encodeURIComponent(estado)}`) }
 
 export function getCorreoPatrones() { return getJson<{ items: CorreoReclamoPatron[] }>('/api/reclamos-config/patrones') }
 export function saveCorreoPatron(model: CorreoReclamoPatron) { return requestJson<{ id: number }>('/api/reclamos-config/patrones', 'PUT', model) }
