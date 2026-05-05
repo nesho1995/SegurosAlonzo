@@ -27,13 +27,6 @@ public class EmailProcessingWorker : BackgroundService
         {
             try
             {
-                var workerEnabledFromConfig = _config.GetValue<bool?>("Worker:Enabled");
-                if (workerEnabledFromConfig.HasValue && !workerEnabledFromConfig.Value)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken);
-                    continue;
-                }
-
                 using var bootScope = _services.CreateScope();
                 var bootSettings = bootScope.ServiceProvider.GetRequiredService<AppSettingsRepository>();
                 var bootRuntime = await bootSettings.GetReclamoCorreoConfigAsync(_config);

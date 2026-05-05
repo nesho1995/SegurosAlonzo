@@ -69,7 +69,7 @@ public class ReclamoCorreoProcessingService
                     }, guardarTallerDetectado: true);
 
                     if (string.IsNullOrWhiteSpace(reclamo.Conductor))
-                        continue;
+                        reclamo.Conductor = string.IsNullOrWhiteSpace(reclamo.Asegurado) ? "Cliente" : reclamo.Asegurado;
 
                     reclamo.MensajeWhatsApp = await _messageBuilder.GenerateMessageAsync(reclamo);
                     reclamo.Estado = "PENDIENTE_ENVIO";
