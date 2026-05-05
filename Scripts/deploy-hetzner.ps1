@@ -69,7 +69,8 @@ fi
 
 # Keep runtime data generated on the server. These folders contain uploaded
 # documents, company branding, and ASP.NET data-protection keys.
-find "$RemotePath" -mindepth 1 \
+# -maxdepth 1 ensures we only delete top-level items; storage/ and Uploads/ subtrees are preserved intact.
+find "$RemotePath" -mindepth 1 -maxdepth 1 \
   ! -name appsettings.json \
   ! -name storage \
   ! -name Uploads \

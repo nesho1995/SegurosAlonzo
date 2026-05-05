@@ -69,8 +69,9 @@ public class AuthApiController : ControllerBase
         var activeSessions = await _users.CountActiveSessionsAsync(user.Id);
         if (activeSessions >= 2)
         {
-            await _auditoria.RegistrarAsync("LOGIN_BLOQUEADO_SESIONES", "USUARIO", user.Id, "Intento de login bloqueado por limite de 2 sesiones activas.");
-            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Este usuario ya tiene 2 sesiones activas. Cierra una sesion antes de entrar de nuevo." });
+            // Revocar la sesión más antigua para dar paso a la nueva
+            await _users.RevokeOldestSessionAsync(user.Id);
+            await _auditoria.RegistrarAsync("SESION_ANTIGUA_REVOCADA", "USUARIO", user.Id, "Sesion mas antigua revocada al superar limite de 2 sesiones activas.");
         }
 
         var sessionId = await _users.CreateSessionAsync(

@@ -210,6 +210,20 @@ namespace ReclamosWhatsApp.Services
                   AND expires_at > UTC_TIMESTAMP();", new { userId });
         }
 
+        public async Task RevokeOldestSessionAsync(int userId)
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET revoked_at = UTC_TIMESTAMP()
+                WHERE user_id = @userId
+                  AND revoked_at IS NULL
+                  AND expires_at > UTC_TIMESTAMP()
+                ORDER BY created_at ASC
+                LIMIT 1;", new { userId });
+        }
+
         public async Task<string> CreateSessionAsync(int userId, string? ipAddress, string? userAgent, DateTime expiresAtUtc)
         {
             using var connection = _db.CreateConnection();

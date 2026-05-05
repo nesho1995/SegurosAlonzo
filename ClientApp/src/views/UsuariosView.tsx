@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { KeyRound, Save, Trash2, UserPlus } from 'lucide-react'
+import { KeyRound, Save, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
 import { createUsuario, deleteUsuario, getUsuarios, resetUsuarioPassword, updateUsuario, updateUsuarioPermissions } from '../api/usuariosApi'
 import { CellTitle, DataTable } from '../components/DataTable'
 import { ErrorCard } from '../components/ErrorAlert'
@@ -192,19 +192,20 @@ export function UsuariosView() {
                   {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                 </select>,
                 <label className="check-field"><input type="checkbox" checked={user.isActive} onChange={(event) => setUsuarios((items) => items.map((item) => item.id === user.id ? { ...item, isActive: event.target.checked } : item))} />Activo</label>,
-                <div className="table-actions">
-                  <button className="icon-button secondary" onClick={() => saveUser(user)}><Save size={16} />Guardar</button>
-                  <button className="icon-button secondary" onClick={() => resetUserPassword(user)}><KeyRound size={16} />Clave</button>
+                <div className="table-actions" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
+                  <button className="icon-button secondary" title="Guardar cambios" onClick={() => saveUser(user)}><Save size={16} /></button>
+                  <button className="icon-button secondary" title="Resetear clave" onClick={() => resetUserPassword(user)}><KeyRound size={16} /></button>
                   <button
                     className="icon-button secondary"
+                    title="Editar permisos"
                     onClick={() => {
                       setSelectedUserId(user.id)
                       setPermissionDraft(user.customPermissions || [])
                     }}
                   >
-                    Permisos
+                    <ShieldCheck size={16} />
                   </button>
-                  <button className="icon-button danger-button" onClick={() => void removeUser(user)}><Trash2 size={16} />Eliminar</button>
+                  <button className="icon-button danger-button" title="Eliminar usuario" onClick={() => void removeUser(user)}><Trash2 size={16} /></button>
                 </div>,
               ])}
             />
