@@ -491,8 +491,13 @@ public class CarteraApiController : ControllerBase
         var poliza = await _cartera.GetPolizaByIdAsync(polizaId);
         if (poliza is null) return NotFound(new { error = "Póliza no encontrada." });
 
+        // Para pólizas de grupo financiero, usar la póliza maestra para obtener las cuotas
+        var cuotaSourceId = polizaId;
+        if (poliza.ClienteContratanteId.HasValue)
+            cuotaSourceId = await _cartera.GetFinancialMasterPolizaIdAsync(polizaId);
+
         var cliente  = await _cartera.GetClienteByIdAsync(poliza.ClienteId);
-        var cuotas   = await _cartera.GetCuotasByPolizaAsync(polizaId);
+        var cuotas   = await _cartera.GetCuotasByPolizaAsync(cuotaSourceId);
 
         var datos = new PolizaResumenPdf
         {
