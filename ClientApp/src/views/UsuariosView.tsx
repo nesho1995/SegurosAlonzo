@@ -186,26 +186,27 @@ export function UsuariosView() {
           {loading ? <LoadingCard text="Cargando usuarios..." /> : (
             <DataTable
               headers={['Usuario', 'Rol', 'Estado', 'Acciones']}
+              maxHeight="none"
               rows={usuarios.map((user) => [
                 <CellTitle title={user.username} subtitle={`ID ${user.id}`} />,
                 <select value={user.roleId} onChange={(event) => setUsuarios((items) => items.map((item) => item.id === user.id ? { ...item, roleId: Number(event.target.value) } : item))}>
                   {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                 </select>,
                 <label className="check-field"><input type="checkbox" checked={user.isActive} onChange={(event) => setUsuarios((items) => items.map((item) => item.id === user.id ? { ...item, isActive: event.target.checked } : item))} />Activo</label>,
-                <div className="table-actions" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '6px' }}>
-                  <button className="icon-button secondary" title="Guardar cambios" onClick={() => saveUser(user)}><Save size={16} /></button>
-                  <button className="icon-button secondary" title="Resetear clave" onClick={() => resetUserPassword(user)}><KeyRound size={16} /></button>
+                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', gap: '6px' }}>
+                  <button className="icon-button secondary compact" title="Guardar cambios" onClick={() => saveUser(user)}><Save size={14} /></button>
+                  <button className="icon-button secondary compact" title="Resetear clave" onClick={() => resetUserPassword(user)}><KeyRound size={14} /></button>
                   <button
-                    className="icon-button secondary"
+                    className="icon-button secondary compact"
                     title="Editar permisos"
                     onClick={() => {
                       setSelectedUserId(user.id)
                       setPermissionDraft(user.customPermissions || [])
                     }}
                   >
-                    <ShieldCheck size={16} />
+                    <ShieldCheck size={14} />
                   </button>
-                  <button className="icon-button danger-button" title="Eliminar usuario" onClick={() => void removeUser(user)}><Trash2 size={16} /></button>
+                  <button className="icon-button danger-button compact" title="Eliminar usuario" onClick={() => void removeUser(user)}><Trash2 size={14} /></button>
                 </div>,
               ])}
             />
