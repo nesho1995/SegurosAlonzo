@@ -71,9 +71,6 @@ public class CarteraRepository
                 ADD COLUMN IF NOT EXISTS motivo_revision TEXT NULL,
                 ADD COLUMN IF NOT EXISTS fecha_actualizacion DATETIME NULL;
 
-            ALTER TABLE vehiculos
-                ADD COLUMN IF NOT EXISTS fecha_actualizacion DATETIME NULL;
-
             ALTER TABLE clientes
                 ADD COLUMN IF NOT EXISTS estado_negocio VARCHAR(30) NOT NULL DEFAULT 'ACTIVO';
 
@@ -98,6 +95,9 @@ public class CarteraRepository
                 INDEX ix_vehiculos_vin (vin_serie),
                 CONSTRAINT fk_vehiculos_cliente FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE CASCADE
             );
+
+            ALTER TABLE vehiculos
+                ADD COLUMN IF NOT EXISTS fecha_actualizacion DATETIME NULL;
 
             CREATE TABLE IF NOT EXISTS vehiculo_historial (
                 id INT AUTO_INCREMENT PRIMARY KEY,
