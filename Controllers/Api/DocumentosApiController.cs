@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -79,7 +80,7 @@ public class DocumentosApiController : ControllerBase
         {
             var (documento, absolutePath) = await _storage.PrepararDescargaAsync(id);
             var contentType = string.IsNullOrWhiteSpace(documento.MimeType) ? GetContentType(documento.Extension) : documento.MimeType;
-            Response.Headers["Content-Disposition"] = $"inline; filename=\"{documento.NombreArchivoOriginal}\"";
+            Response.Headers.ContentDisposition = BuildInlineContentDisposition(documento.NombreArchivoOriginal);
             await _auditoria.RegistrarAsync("VER_DOCUMENTO", documento.EntidadTipo, documento.EntidadId, $"Documento visualizado: {documento.NombreArchivoOriginal}.");
             return PhysicalFile(absolutePath, contentType);
         }
@@ -141,5 +142,26 @@ public class DocumentosApiController : ControllerBase
             "png" => "image/png",
             _ => "application/octet-stream"
         };
+    }
+
+    private static string BuildInlineContentDisposition(string? fileName)
+    {
+        var safeName = SanitizeHeaderFileName(fileName);
+        var asciiFallback = new string(safeName.Select(ch => ch <= 127 ? ch : '_').ToArray());
+        var encoded = Uri.EscapeDataString(safeName);
+        return $"inline; filename=\"{asciiFallback}\"; filename*=UTF-8''{encoded}";
+    }
+
+    private static string SanitizeHeaderFileName(string? fileName)
+    {
+        var cleaned = new string((fileName ?? "documento")
+            .Where(ch => !char.IsControl(ch) && ch != '"' && ch != '\\' && ch != '/')
+            .ToArray())
+            .Trim();
+
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return "documento";
+
+        return cleaned.Length > 180 ? cleaned[..180] : cleaned;
     }
 }

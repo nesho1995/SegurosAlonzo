@@ -64,7 +64,7 @@ public class DocumentoStorageService
         Validar(archivo, entidadTipo, entidadId);
 
         var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
-        var nombreOriginal = Path.GetFileName(archivo.FileName);
+        var nombreOriginal = CleanOriginalFileName(Path.GetFileName(archivo.FileName));
         var tipo = string.IsNullOrWhiteSpace(tipoDocumento) ? "OTRO" : tipoDocumento.Trim().ToUpperInvariant();
         var baseFolder = CleanRelativeRoot(_configuration["Documentos:CarpetaBase"] ?? "storage");
         var folderEntidad = CarpetasPorEntidad[entidadTipo];
@@ -189,6 +189,19 @@ public class DocumentoStorageService
         if (string.IsNullOrWhiteSpace(cleaned))
             return "archivo";
         return cleaned.Length > 80 ? cleaned[..80] : cleaned;
+    }
+
+    private static string CleanOriginalFileName(string value)
+    {
+        var fileName = Path.GetFileName(value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "archivo";
+
+        var cleaned = new string(fileName
+            .Where(ch => !char.IsControl(ch) && ch != '"' && ch != '\\' && ch != '/')
+            .ToArray())
+            .Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? "archivo" : cleaned;
     }
 
     private static string CleanRelativeRoot(string value)
