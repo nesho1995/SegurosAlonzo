@@ -9,11 +9,16 @@ export class ApiError extends Error {
 
 async function readError(response: Response, fallback: string) {
   try {
-    const json = await response.json() as { error?: string; message?: string }
-    return json.error || json.message || fallback
-  } catch {
     const text = await response.text()
-    return text || fallback
+    if (!text) return fallback
+    try {
+      const json = JSON.parse(text) as { error?: string; message?: string }
+      return json.error || json.message || fallback
+    } catch {
+      return text || fallback
+    }
+  } catch {
+    return fallback
   }
 }
 

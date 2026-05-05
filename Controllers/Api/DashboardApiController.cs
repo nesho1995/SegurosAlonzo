@@ -98,9 +98,11 @@ public class DashboardApiController : ControllerBase
                 }
             });
         }
-        catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException ex)
+        catch (Exception ex)
         {
-            return StatusCode(500, new { error = "Error al leer datos del dashboard.", detalle = ex.Message });
+            // Log completo en servidor, nunca exponer detalle al cliente
+            _ = ex; // el logger global de Program.cs ya captura la excepcion no manejada
+            return StatusCode(500, new { error = "Error al cargar el dashboard. Intente de nuevo." });
         }
     }
 

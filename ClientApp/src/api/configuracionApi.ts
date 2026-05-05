@@ -32,6 +32,8 @@ export type WhatsAppConfig = {
   templateName: string
   languageCode: string
   adminWhatsAppNumber: string
+  webhookVerifyToken: string
+  webhookVerifyTokenMasked: string
 }
 
 export function getEmpresaConfiguracion() {

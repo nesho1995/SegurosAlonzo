@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench, FileSearch } from 'lucide-react'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -28,10 +29,6 @@ import { ReclamosConfiguracionView } from './views/ReclamosConfiguracionView'
 import { GastosView } from './views/GastosView'
 import { WhatsAppConfigView } from './views/WhatsAppConfigView'
 import { GlobalSearch } from './components/GlobalSearch'
-import { CotizacionesView } from './views/CotizacionesView'
-import { CotizacionRevisionView } from './views/CotizacionRevisionView'
-import { ComparativosView } from './views/ComparativosView'
-import { ComparativoRevisionView } from './views/ComparativoRevisionView'
 import { ToastHost } from './components/ToastHost'
 
 const navItems = [
@@ -41,8 +38,6 @@ const navItems = [
   { id: 'clientes',        label: 'Clientes y Cartera', icon: Users,           section: 'Cartera' },
   { id: 'pagos',           label: 'Cobros y Cuotas',   icon: CreditCard,      section: 'Cartera' },
   { id: 'gastos',          label: 'Gastos',             icon: ReceiptText,     section: 'Cartera' },
-  { id: 'cotizaciones',   label: 'Cotizaciones',       icon: FileSearch,      section: 'Cartera' },
-  { id: 'comparativos',   label: 'Comparar ofertas',   icon: FileSearch,      section: 'Cartera' },
   { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
   // Operaciones
   { id: 'reclamos',        label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
@@ -56,8 +51,8 @@ const navItems = [
   { id: 'whatsapp-config', label: 'WhatsApp',           icon: Send,            section: 'Configuracion' },
   { id: 'usuarios',        label: 'Usuarios',           icon: UserCog,         section: 'Configuracion' },
   { id: 'catalogos',       label: 'Catalogos',          icon: Settings,        section: 'Configuracion' },
-  { id: 'reclamos-config', label: 'Config. reclamos',   icon: Settings,        section: 'Configuracion' },
-  { id: 'extractor',       label: 'Config. avanzada',   icon: Settings,        section: 'Configuracion' },
+  { id: 'reclamos-config', label: 'Reglas de reclamos',  icon: Settings,        section: 'Configuracion' },
+  { id: 'extractor',       label: 'Extractor de correo', icon: Settings,        section: 'Configuracion' },
   // Auditoria
   { id: 'auditoria',       label: 'Auditoria',          icon: FileClock,       section: 'Auditoria' },
 ] satisfies NavItem[]
@@ -73,14 +68,10 @@ function App() {
 
 function AppRouter() {
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname))
-  const [cotizacionId, setCotizacionId]       = useState<number | null>(null)
-  const [comparativoId, setComparativoId]     = useState<number | null>(null)
   const { user, loading, hasPermission } = useAuth()
 
   function navigate(nextView: View) {
     setView(nextView)
-    if (nextView !== 'cotizaciones')  setCotizacionId(null)
-    if (nextView !== 'comparativos')  setComparativoId(null)
     window.history.pushState(null, '', pathFromView(nextView))
   }
 
@@ -111,7 +102,6 @@ function AppRouter() {
     if (target === 'catalogos') return hasPermission('configuracion.administrar')
     if (target === 'reclamos-config') return hasPermission('configuracion.administrar')
     if (target === 'gastos') return hasPermission('gastos.ver')
-    if (target === 'cotizaciones') return hasPermission('cotizaciones.ver')
     return true
   }
 
@@ -124,39 +114,27 @@ function AppRouter() {
       <GlobalSearch />
       {!canAccessView(view) && <AccessDeniedView />}
       {canAccessView(view) && (
-        <>
-      {view === 'dashboard' && <DashboardView />}
-      {view === 'clientes' && <ClientsView />}
-      {view === 'reclamos' && <ReclamosView />}
-      {view === 'recordatorios' && <RemindersView />}
-      {view === 'pagos' && <PaymentsView />}
-      {view === 'gastos' && <GastosView />}
-      {view === 'cotizaciones' && cotizacionId === null && (
-        <CotizacionesView onOpen={id => setCotizacionId(id)} />
-      )}
-      {view === 'cotizaciones' && cotizacionId !== null && (
-        <CotizacionRevisionView cotizacionId={cotizacionId} onBack={() => setCotizacionId(null)} />
-      )}
-      {view === 'comparativos' && comparativoId === null && (
-        <ComparativosView onOpen={id => setComparativoId(id)} />
-      )}
-      {view === 'comparativos' && comparativoId !== null && (
-        <ComparativoRevisionView comparativoId={comparativoId} onBack={() => setComparativoId(null)} />
-      )}
-      {view === 'automatizaciones' && <AutomationView />}
-      {view === 'extractor' && <ExtractorView />}
-      {view === 'talleres' && <WorkshopsView />}
-      {view === 'carga' && <BulkHelpView />}
-      {view === 'auditoria' && <AuditoriaView />}
-      {view === 'usuarios' && <UsuariosView />}
-      {view === 'configuracion' && <ConfiguracionEmpresaView />}
-      {view === 'envios-auto' && <AutomatizacionEnviosView />}
-      {view === 'whatsapp-config' && <WhatsAppConfigView />}
-      {view === 'catalogos' && <CatalogosView />}
-      {view === 'reclamos-config' && <ReclamosConfiguracionView />}
-      {view === 'password' && <CambiarPasswordView />}
-      {view === 'access-denied' && <AccessDeniedView />}
-        </>
+        <ErrorBoundary key={view}>
+          {view === 'dashboard'      && <DashboardView />}
+          {view === 'clientes'       && <ClientsView />}
+          {view === 'reclamos'       && <ReclamosView />}
+          {view === 'recordatorios'  && <RemindersView />}
+          {view === 'pagos'          && <PaymentsView />}
+          {view === 'gastos'         && <GastosView />}
+          {view === 'automatizaciones' && <AutomationView />}
+          {view === 'extractor'      && <ExtractorView />}
+          {view === 'talleres'       && <WorkshopsView />}
+          {view === 'carga'          && <BulkHelpView />}
+          {view === 'auditoria'      && <AuditoriaView />}
+          {view === 'usuarios'       && <UsuariosView />}
+          {view === 'configuracion'  && <ConfiguracionEmpresaView />}
+          {view === 'envios-auto'    && <AutomatizacionEnviosView />}
+          {view === 'whatsapp-config' && <WhatsAppConfigView />}
+          {view === 'catalogos'      && <CatalogosView />}
+          {view === 'reclamos-config' && <ReclamosConfiguracionView />}
+          {view === 'password'       && <CambiarPasswordView />}
+          {view === 'access-denied'  && <AccessDeniedView />}
+        </ErrorBoundary>
       )}
     </Layout>
   )

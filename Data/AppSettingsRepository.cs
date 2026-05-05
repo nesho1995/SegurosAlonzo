@@ -222,6 +222,7 @@ public class AppSettingsRepository
             => bool.TryParse(Get(key, fallback ? "true" : "false"), out var parsed) ? parsed : fallback;
 
         var token = Get(nameof(WhatsAppConfig.AccessToken), configuration["WhatsApp:AccessToken"] ?? "");
+        var webhookToken = Get(nameof(WhatsAppConfig.WebhookVerifyToken), configuration["WhatsApp:WebhookVerifyToken"] ?? "");
         return new WhatsAppConfig
         {
             Enabled = GetBool(nameof(WhatsAppConfig.Enabled), configuration.GetValue<bool>("WhatsApp:Enabled")),
@@ -231,7 +232,9 @@ public class AppSettingsRepository
             AccessTokenMasked = MaskSecret(token),
             TemplateName = Get(nameof(WhatsAppConfig.TemplateName), configuration["WhatsApp:TemplateName"] ?? ""),
             LanguageCode = Get(nameof(WhatsAppConfig.LanguageCode), configuration["WhatsApp:LanguageCode"] ?? "es"),
-            AdminWhatsAppNumber = Get(nameof(WhatsAppConfig.AdminWhatsAppNumber), configuration["Admin:WhatsAppNumber"] ?? "")
+            AdminWhatsAppNumber = Get(nameof(WhatsAppConfig.AdminWhatsAppNumber), configuration["Admin:WhatsAppNumber"] ?? ""),
+            WebhookVerifyToken = includeSecret ? webhookToken : "",
+            WebhookVerifyTokenMasked = MaskSecret(webhookToken),
         };
     }
 
@@ -251,6 +254,10 @@ public class AppSettingsRepository
             ? current.AccessToken
             : config.AccessToken.Trim();
 
+        var currentWebhookToken = string.IsNullOrWhiteSpace(config.WebhookVerifyToken) || IsMaskedSecret(config.WebhookVerifyToken)
+            ? current.WebhookVerifyToken
+            : config.WebhookVerifyToken.Trim();
+
         var values = new Dictionary<string, string>
         {
             [nameof(config.Enabled)] = config.Enabled.ToString().ToLowerInvariant(),
@@ -259,7 +266,8 @@ public class AppSettingsRepository
             [nameof(config.AccessToken)] = token,
             [nameof(config.TemplateName)] = config.TemplateName?.Trim() ?? "",
             [nameof(config.LanguageCode)] = string.IsNullOrWhiteSpace(config.LanguageCode) ? "es" : config.LanguageCode.Trim(),
-            [nameof(config.AdminWhatsAppNumber)] = config.AdminWhatsAppNumber?.Trim() ?? ""
+            [nameof(config.AdminWhatsAppNumber)] = config.AdminWhatsAppNumber?.Trim() ?? "",
+            [nameof(config.WebhookVerifyToken)] = currentWebhookToken,
         };
 
         foreach (var item in values)

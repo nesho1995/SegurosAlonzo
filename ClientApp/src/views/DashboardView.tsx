@@ -20,36 +20,21 @@ export function DashboardView() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [tareas, setTareas] = useState<TareasHoy | null>(null)
 
-  async function load() {
-    setLoading(true)
-    setError(null)
-    try {
-      setData(await getDashboard(filters))
-      setLastUpdated(new Date())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     let alive = true
+    setLoading(true)
+    setError(null)
     getDashboard(filters)
-      .then((json) => {
-        if (alive) { setData(json); setLastUpdated(new Date()) }
-      })
-      .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : 'Error inesperado.')
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-
-    return () => {
-      alive = false
-    }
+      .then((json)  => { if (alive) { setData(json); setLastUpdated(new Date()) } })
+      .catch((err)  => { if (alive) setError(err instanceof Error ? err.message : 'Error inesperado.') })
+      .finally(()   => { if (alive) setLoading(false) })
+    return () => { alive = false }
   }, [filters])
+
+  function load() {
+    // Fuerza recarga tocando los filtros con el mismo valor → dispara el effect
+    setFilters(f => ({ ...f }))
+  }
 
   useEffect(() => {
     let alive = true

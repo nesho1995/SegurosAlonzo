@@ -10,6 +10,8 @@ using ReclamosWhatsApp.Services.DataQuality;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+var isDev = builder.Environment.IsDevelopment();
+
 builder.Services.Configure<HostOptions>(options =>
 {
     options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
@@ -48,7 +50,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/access-denied";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = isDev
+            ? CookieSecurePolicy.SameAsRequest   // local HTTP sin certificado
+            : CookieSecurePolicy.Always;         // producción siempre HTTPS
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.Events.OnRedirectToLogin = context =>
@@ -107,8 +111,6 @@ builder.Services.AddScoped<NotificacionRepository>();
 builder.Services.AddScoped<AutomationRepository>();
 builder.Services.AddScoped<EmpresaConfiguracionRepository>();
 builder.Services.AddScoped<GastoRepository>();
-builder.Services.AddScoped<CotizacionRepository>();
-builder.Services.AddScoped<ComparativoRepository>();
 builder.Services.AddScoped<CatalogoRepository>();
 builder.Services.AddScoped<WhatsAppEnvioLogRepository>();
 builder.Services.AddScoped<ReclamoPatronesRepository>();
@@ -145,6 +147,9 @@ app.UseExceptionHandler(errorApp =>
     {
         var feature = context.Features.Get<IExceptionHandlerPathFeature>();
         var exception = feature?.Error;
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        if (exception is not null)
+            logger.LogError(exception, "Excepcion no manejada en {Path}", feature?.Path);
         var dbUnavailable = HasMySqlException(exception);
         context.Response.StatusCode = dbUnavailable
             ? StatusCodes.Status503ServiceUnavailable
@@ -188,6 +193,7 @@ static bool HasMySqlException(Exception? ex)
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
+    app.UseHttpsRedirection(); // en producción redirige HTTP → HTTPS automáticamente
 }
 
 if (spaFiles is not null)
@@ -229,13 +235,6 @@ using (var scope = app.Services.CreateScope())
     if (actualizadas > 0)
         app.Logger.LogInformation("Startup: {Count} pólizas marcadas como VENCIDA por fecha.", actualizadas);
 
-    // Inicializar schema de cotizaciones
-    var cotizaciones = scope.ServiceProvider.GetRequiredService<CotizacionRepository>();
-    await cotizaciones.EnsureSchemaAsync();
-
-    // Inicializar schema de comparativos
-    var comparativos = scope.ServiceProvider.GetRequiredService<ComparativoRepository>();
-    await comparativos.EnsureSchemaAsync();
 
     // Sincronizar estado_negocio de clientes al arrancar
     var clientesActualizados = await cartera.SincronizarEstadosClientesAsync();
