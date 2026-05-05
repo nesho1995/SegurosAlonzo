@@ -6,6 +6,7 @@ public class WhatsAppConversacion
     public string Telefono { get; set; } = "";
     public string? NombreContacto { get; set; }
     public int? ClienteId { get; set; }
+    public int? ReclamoId { get; set; }
     public string Estado { get; set; } = "abierta";
     public DateTime UltimaActividad { get; set; }
     public int NoLeidos { get; set; }
@@ -37,11 +38,34 @@ public class ConversacionListItem
     public string? NombreContacto { get; set; }
     public int? ClienteId { get; set; }
     public string? NombreCliente { get; set; }
+    public int? ReclamoId { get; set; }
+    public string? NumeroReclamo { get; set; }
+    public int? AgenteAsignadoId { get; set; }
+    public string? AgenteNombre { get; set; }
     public string Estado { get; set; } = "abierta";
     public DateTime UltimaActividad { get; set; }
     public int NoLeidos { get; set; }
     public string? UltimoMensaje { get; set; }
     public string? UltimoDireccion { get; set; }
+    public string? UltimoTipoContenido { get; set; }
+}
+
+public class ConversacionDetalle
+{
+    public int Id { get; set; }
+    public string Telefono { get; set; } = "";
+    public string? NombreContacto { get; set; }
+    public int? ClienteId { get; set; }
+    public string? NombreCliente { get; set; }
+    public int? ReclamoId { get; set; }
+    public string? NumeroReclamo { get; set; }
+    public string? ConductorReclamo { get; set; }
+    public int? AgenteAsignadoId { get; set; }
+    public string? AgenteNombre { get; set; }
+    public string Estado { get; set; } = "abierta";
+    public DateTime UltimaActividad { get; set; }
+    public int NoLeidos { get; set; }
+    public DateTime CreadoEn { get; set; }
 }
 
 public class MensajeDto
@@ -56,4 +80,11 @@ public class MensajeDto
     public string Estado { get; set; } = "recibido";
     public string? NombreUsuario { get; set; }
     public DateTime CreadoEn { get; set; }
+}
+
+public class AgenteSummary
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = "";
+    public string? RoleName { get; set; }
 }

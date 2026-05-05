@@ -37,7 +37,8 @@ public class WhatsAppBandejaApiController : ControllerBase
     {
         if (limit is < 1 or > 200) limit = 50;
         var (items, total) = await _repo.GetConversacionesAsync(estado, buscar, limit, offset);
-        return Ok(new { items, total });
+        var totalNoLeidos = await _repo.GetTotalNoLeidosAsync();
+        return Ok(new { items, total, totalNoLeidos });
     }
 
     // GET /api/whatsapp/bandeja/{id}/mensajes
@@ -73,10 +74,8 @@ public class WhatsAppBandejaApiController : ControllerBase
             return BadRequest(new { error = response });
 
         await _auditoria.RegistrarAsync(
-            "WHATSAPP_RESPUESTA_BANDEJA",
-            "WHATSAPP",
-            null,
-            $"Respuesta enviada a {conv.NombreContacto ?? conv.Telefono} ({conv.Telefono}): {req.Mensaje[..Math.Min(100, req.Mensaje.Length)]}");
+            "WHATSAPP_RESPUESTA_BANDEJA", "WHATSAPP", null,
+            $"Respuesta enviada a {conv.NombreContacto ?? conv.Telefono}: {req.Mensaje[..Math.Min(100, req.Mensaje.Length)]}");
 
         return Ok(new { ok = true });
     }
@@ -87,7 +86,6 @@ public class WhatsAppBandejaApiController : ControllerBase
     {
         var conv = await _repo.GetConversacionByIdAsync(id);
         if (conv is null) return NotFound(new { error = "Conversación no encontrada." });
-
         await _repo.MarcarLeidoAsync(id);
         return Ok(new { ok = true });
     }
@@ -113,9 +111,37 @@ public class WhatsAppBandejaApiController : ControllerBase
     {
         var conv = await _repo.GetConversacionByIdAsync(id);
         if (conv is null) return NotFound(new { error = "Conversación no encontrada." });
-
         await _repo.AsociarClienteAsync(id, req.ClienteId);
         return Ok(new { ok = true });
+    }
+
+    // POST /api/whatsapp/bandeja/{id}/asociar-reclamo
+    [HttpPost("{id:int}/asociar-reclamo")]
+    public async Task<IActionResult> AsociarReclamo(int id, [FromBody] AsociarReclamoRequest req)
+    {
+        var conv = await _repo.GetConversacionByIdAsync(id);
+        if (conv is null) return NotFound(new { error = "Conversación no encontrada." });
+        await _repo.AsociarReclamoAsync(id, req.ReclamoId);
+        var convActualizada = await _repo.GetConversacionByIdAsync(id);
+        return Ok(new { ok = true, conversacion = convActualizada });
+    }
+
+    // POST /api/whatsapp/bandeja/{id}/asignar-agente
+    [HttpPost("{id:int}/asignar-agente")]
+    public async Task<IActionResult> AsignarAgente(int id, [FromBody] AsignarAgenteRequest req)
+    {
+        var conv = await _repo.GetConversacionByIdAsync(id);
+        if (conv is null) return NotFound(new { error = "Conversación no encontrada." });
+        await _repo.AsignarAgenteAsync(id, req.AgenteId);
+        return Ok(new { ok = true });
+    }
+
+    // GET /api/whatsapp/bandeja/agentes
+    [HttpGet("agentes")]
+    public async Task<IActionResult> GetAgentes()
+    {
+        var agentes = await _repo.GetAgentesAsync();
+        return Ok(agentes);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -130,3 +156,5 @@ public class WhatsAppBandejaApiController : ControllerBase
 public record RespuestaRequest(string Mensaje);
 public record EstadoRequest(string Estado);
 public record AsociarClienteRequest(int ClienteId);
+public record AsociarReclamoRequest(int? ReclamoId);
+public record AsignarAgenteRequest(int? AgenteId);

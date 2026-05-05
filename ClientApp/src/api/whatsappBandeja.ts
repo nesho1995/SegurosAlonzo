@@ -4,11 +4,33 @@ export interface ConversacionListItem {
   nombreContacto: string | null
   clienteId: number | null
   nombreCliente: string | null
+  reclamoId: number | null
+  numeroReclamo: string | null
+  agenteAsignadoId: number | null
+  agenteNombre: string | null
   estado: 'abierta' | 'en_espera' | 'resuelta'
   ultimaActividad: string
   noLeidos: number
   ultimoMensaje: string | null
   ultimoDireccion: 'entrante' | 'saliente' | null
+  ultimoTipoContenido: string | null
+}
+
+export interface ConversacionDetalle {
+  id: number
+  telefono: string
+  nombreContacto: string | null
+  clienteId: number | null
+  nombreCliente: string | null
+  reclamoId: number | null
+  numeroReclamo: string | null
+  conductorReclamo: string | null
+  agenteAsignadoId: number | null
+  agenteNombre: string | null
+  estado: string
+  ultimaActividad: string
+  noLeidos: number
+  creadoEn: string
 }
 
 export interface MensajeDto {
@@ -24,14 +46,10 @@ export interface MensajeDto {
   creadoEn: string
 }
 
-export interface ConversacionDetalle {
+export interface AgenteSummary {
   id: number
-  telefono: string
-  nombreContacto: string | null
-  clienteId: number | null
-  estado: string
-  ultimaActividad: string
-  noLeidos: number
+  username: string
+  roleName: string | null
 }
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
@@ -42,8 +60,7 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    const msg = (body as { error?: string }).error ?? `HTTP ${res.status}`
-    throw new Error(msg)
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
   }
   return res.json()
 }
@@ -53,7 +70,7 @@ export async function getConversaciones(params: {
   buscar?: string
   limit?: number
   offset?: number
-}): Promise<{ items: ConversacionListItem[]; total: number }> {
+}): Promise<{ items: ConversacionListItem[]; total: number; totalNoLeidos: number }> {
   const qs = new URLSearchParams()
   if (params.estado) qs.set('estado', params.estado)
   if (params.buscar) qs.set('buscar', params.buscar)
@@ -95,4 +112,29 @@ export async function asociarCliente(conversacionId: number, clienteId: number):
     method: 'POST',
     body: JSON.stringify({ clienteId }),
   })
+}
+
+export async function asociarReclamo(
+  conversacionId: number,
+  reclamoId: number | null
+): Promise<{ conversacion: ConversacionDetalle }> {
+  return apiFetch(`/api/whatsapp/bandeja/${conversacionId}/asociar-reclamo`, {
+    method: 'POST',
+    body: JSON.stringify({ reclamoId }),
+  })
+}
+
+export async function asignarAgente(conversacionId: number, agenteId: number | null): Promise<void> {
+  await apiFetch(`/api/whatsapp/bandeja/${conversacionId}/asignar-agente`, {
+    method: 'POST',
+    body: JSON.stringify({ agenteId }),
+  })
+}
+
+export async function getAgentes(): Promise<AgenteSummary[]> {
+  return apiFetch('/api/whatsapp/bandeja/agentes')
+}
+
+export function mediaUrl(mediaId: string, forceDownload = false): string {
+  return `/api/whatsapp/media/${mediaId}${forceDownload ? '?download=true' : ''}`
 }

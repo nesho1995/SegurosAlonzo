@@ -21,6 +21,7 @@ public class WhatsAppConversacionRepository
                 telefono            VARCHAR(50)  NOT NULL,
                 nombre_contacto     VARCHAR(180) NULL,
                 cliente_id          INT          NULL,
+                reclamo_id          INT          NULL,
                 estado              VARCHAR(30)  NOT NULL DEFAULT 'abierta',
                 ultima_actividad    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 no_leidos           INT          NOT NULL DEFAULT 0,
@@ -31,6 +32,11 @@ public class WhatsAppConversacionRepository
                 INDEX ix_wa_conv_actividad     (ultima_actividad DESC),
                 INDEX ix_wa_conv_cliente       (cliente_id)
             )");
+
+        // Agregar reclamo_id si no existe (migración idempotente)
+        await cn.ExecuteAsync(@"
+            ALTER TABLE whatsapp_conversaciones
+                ADD COLUMN IF NOT EXISTS reclamo_id INT NULL AFTER cliente_id");
 
         await cn.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS whatsapp_mensajes (
@@ -59,8 +65,6 @@ public class WhatsAppConversacionRepository
     public async Task<int> GetOrCreateConversacionAsync(string telefono, string? nombre)
     {
         using var cn = _factory.CreateConnection();
-
-        // Upsert: si existe actualizar nombre si vino uno nuevo; si no, crear
         await cn.ExecuteAsync(@"
             INSERT INTO whatsapp_conversaciones (telefono, nombre_contacto, ultima_actividad)
             VALUES (@telefono, @nombre, NOW())
@@ -100,30 +104,40 @@ public class WhatsAppConversacionRepository
 
         var sql = $@"
             SELECT
-                c.id             Id,
-                c.telefono       Telefono,
-                c.nombre_contacto NombreContacto,
-                c.cliente_id     ClienteId,
-                cl.nombre        NombreCliente,
-                c.estado         Estado,
-                c.ultima_actividad UltimaActividad,
-                c.no_leidos      NoLeidos,
+                c.id                Id,
+                c.telefono          Telefono,
+                c.nombre_contacto   NombreContacto,
+                c.cliente_id        ClienteId,
+                cl.nombre           NombreCliente,
+                c.reclamo_id        ReclamoId,
+                r.numero_reclamo    NumeroReclamo,
+                c.agente_asignado_id AgenteAsignadoId,
+                u.Username          AgenteNombre,
+                c.estado            Estado,
+                c.ultima_actividad  UltimaActividad,
+                c.no_leidos         NoLeidos,
                 (
                     SELECT m.contenido
                     FROM whatsapp_mensajes m
                     WHERE m.conversacion_id = c.id
-                    ORDER BY m.creado_en DESC
-                    LIMIT 1
+                    ORDER BY m.creado_en DESC LIMIT 1
                 ) UltimoMensaje,
                 (
                     SELECT m.direccion
                     FROM whatsapp_mensajes m
                     WHERE m.conversacion_id = c.id
-                    ORDER BY m.creado_en DESC
-                    LIMIT 1
-                ) UltimoDireccion
+                    ORDER BY m.creado_en DESC LIMIT 1
+                ) UltimoDireccion,
+                (
+                    SELECT m.tipo_contenido
+                    FROM whatsapp_mensajes m
+                    WHERE m.conversacion_id = c.id
+                    ORDER BY m.creado_en DESC LIMIT 1
+                ) UltimoTipoContenido
             FROM whatsapp_conversaciones c
             LEFT JOIN clientes cl ON cl.id = c.cliente_id
+            LEFT JOIN reclamos_whatsapp r ON r.id = c.reclamo_id
+            LEFT JOIN Users u ON u.Id = c.agente_asignado_id
             {whereSql}
             ORDER BY c.ultima_actividad DESC
             LIMIT @limit OFFSET @offset";
@@ -139,11 +153,37 @@ public class WhatsAppConversacionRepository
         return (items, total);
     }
 
-    public async Task<WhatsAppConversacion?> GetConversacionByIdAsync(int id)
+    public async Task<int> GetTotalNoLeidosAsync()
     {
         using var cn = _factory.CreateConnection();
-        return await cn.QueryFirstOrDefaultAsync<WhatsAppConversacion>(
-            "SELECT id Id, telefono Telefono, nombre_contacto NombreContacto, cliente_id ClienteId, estado Estado, ultima_actividad UltimaActividad, no_leidos NoLeidos, agente_asignado_id AgenteAsignadoId, creado_en CreadoEn FROM whatsapp_conversaciones WHERE id = @id",
+        return await cn.ExecuteScalarAsync<int>(
+            "SELECT COALESCE(SUM(no_leidos), 0) FROM whatsapp_conversaciones WHERE estado != 'resuelta'");
+    }
+
+    public async Task<ConversacionDetalle?> GetConversacionByIdAsync(int id)
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryFirstOrDefaultAsync<ConversacionDetalle>(@"
+            SELECT
+                c.id                Id,
+                c.telefono          Telefono,
+                c.nombre_contacto   NombreContacto,
+                c.cliente_id        ClienteId,
+                cl.nombre           NombreCliente,
+                c.reclamo_id        ReclamoId,
+                r.numero_reclamo    NumeroReclamo,
+                r.conductor         ConductorReclamo,
+                c.agente_asignado_id AgenteAsignadoId,
+                u.Username          AgenteNombre,
+                c.estado            Estado,
+                c.ultima_actividad  UltimaActividad,
+                c.no_leidos         NoLeidos,
+                c.creado_en         CreadoEn
+            FROM whatsapp_conversaciones c
+            LEFT JOIN clientes cl ON cl.id = c.cliente_id
+            LEFT JOIN reclamos_whatsapp r ON r.id = c.reclamo_id
+            LEFT JOIN Users u ON u.Id = c.agente_asignado_id
+            WHERE c.id = @id",
             new { id });
     }
 
@@ -171,6 +211,22 @@ public class WhatsAppConversacionRepository
             new { clienteId, id = conversacionId });
     }
 
+    public async Task AsociarReclamoAsync(int conversacionId, int? reclamoId)
+    {
+        using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(
+            "UPDATE whatsapp_conversaciones SET reclamo_id = @reclamoId WHERE id = @id",
+            new { reclamoId, id = conversacionId });
+    }
+
+    public async Task AsignarAgenteAsync(int conversacionId, int? agenteId)
+    {
+        using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(
+            "UPDATE whatsapp_conversaciones SET agente_asignado_id = @agenteId WHERE id = @id",
+            new { agenteId, id = conversacionId });
+    }
+
     // ─── Mensajes ─────────────────────────────────────────────────────────────
 
     public async Task<int> SaveMensajeAsync(WhatsAppMensaje msg)
@@ -188,7 +244,6 @@ public class WhatsAppConversacionRepository
                  @Estado, @UsuarioId, NOW());
             SELECT LAST_INSERT_ID();", msg);
 
-        // Actualizar actividad y contador de no_leidos en la conversación
         if (msg.Direccion == "entrante")
         {
             await cn.ExecuteAsync(@"
@@ -201,9 +256,7 @@ public class WhatsAppConversacionRepository
         else
         {
             await cn.ExecuteAsync(@"
-                UPDATE whatsapp_conversaciones
-                SET ultima_actividad = NOW()
-                WHERE id = @id",
+                UPDATE whatsapp_conversaciones SET ultima_actividad = NOW() WHERE id = @id",
                 new { id = msg.ConversacionId });
         }
 
@@ -223,20 +276,20 @@ public class WhatsAppConversacionRepository
         var total = await cn.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM whatsapp_mensajes WHERE conversacion_id = @convId", p);
 
-        // Paginado inverso: traer los últimos <limit> mensajes ordenados ASC
+        // Paginado inverso: últimos <limit> mensajes ordenados ASC para mostrar cronológicamente
         var sql = @"
             SELECT * FROM (
                 SELECT
-                    m.id             Id,
-                    m.direccion      Direccion,
-                    m.tipo_contenido TipoContenido,
-                    m.contenido      Contenido,
-                    m.media_id       MediaId,
+                    m.id              Id,
+                    m.direccion       Direccion,
+                    m.tipo_contenido  TipoContenido,
+                    m.contenido       Contenido,
+                    m.media_id        MediaId,
                     m.media_tipo_mime MediaTipoMime,
-                    m.media_nombre   MediaNombre,
-                    m.estado         Estado,
-                    u.Username       NombreUsuario,
-                    m.creado_en      CreadoEn
+                    m.media_nombre    MediaNombre,
+                    m.estado          Estado,
+                    u.Username        NombreUsuario,
+                    m.creado_en       CreadoEn
                 FROM whatsapp_mensajes m
                 LEFT JOIN Users u ON u.Id = m.usuario_id
                 WHERE m.conversacion_id = @convId
@@ -253,9 +306,21 @@ public class WhatsAppConversacionRepository
     {
         using var cn = _factory.CreateConnection();
         await cn.ExecuteAsync(@"
-            UPDATE whatsapp_mensajes
-            SET estado = @estado
+            UPDATE whatsapp_mensajes SET estado = @estado
             WHERE whatsapp_message_id = @msgId",
             new { estado, msgId = whatsappMessageId });
+    }
+
+    // ─── Agentes disponibles ──────────────────────────────────────────────────
+
+    public async Task<IEnumerable<AgenteSummary>> GetAgentesAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryAsync<AgenteSummary>(@"
+            SELECT u.Id, u.Username, ro.Name RoleName
+            FROM Users u
+            LEFT JOIN Roles ro ON ro.Id = u.RoleId
+            WHERE u.IsActive = 1
+            ORDER BY u.Username");
     }
 }
