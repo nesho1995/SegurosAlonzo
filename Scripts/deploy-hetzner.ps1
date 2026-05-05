@@ -61,15 +61,25 @@ if [ -f "$RemotePath/appsettings.json" ]; then
   cp "$RemotePath/appsettings.json" /tmp/appsettings.seguros-alonzo.keep
 fi
 
-find "$RemotePath" -mindepth 1 ! -name appsettings.json -exec rm -rf {} +
+# Keep runtime data generated on the server. These folders contain uploaded
+# documents, company branding, and ASP.NET data-protection keys.
+find "$RemotePath" -mindepth 1 \
+  ! -name appsettings.json \
+  ! -name storage \
+  ! -name Uploads \
+  ! -name .aspnet \
+  -exec rm -rf {} +
 tar -xzf "$remoteArchive" -C "$RemotePath"
 
 if [ -f /tmp/appsettings.seguros-alonzo.keep ]; then
   mv /tmp/appsettings.seguros-alonzo.keep "$RemotePath/appsettings.json"
 fi
 
-mkdir -p "$RemotePath/storage" "$RemotePath/Uploads"
+mkdir -p "$RemotePath/storage" "$RemotePath/Uploads" "$RemotePath/.aspnet"
 chown -R www-data:www-data "$RemotePath"
+find "$RemotePath" -type d -exec chmod 755 {} +
+find "$RemotePath" -type f -exec chmod 644 {} +
+chmod 755 "$RemotePath/ReclamosWhatsApp.exe" 2>/dev/null || true
 systemctl restart "$ServiceName"
 sleep 3
 systemctl is-active "$ServiceName"
