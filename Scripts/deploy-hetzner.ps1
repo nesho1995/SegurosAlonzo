@@ -56,9 +56,15 @@ Write-Host "Deploying on server..."
 $remoteScript = @"
 set -euo pipefail
 mkdir -p "$RemotePath"
+mkdir -p /root/backups
 
 if [ -f "$RemotePath/appsettings.json" ]; then
   cp "$RemotePath/appsettings.json" /tmp/appsettings.seguros-alonzo.keep
+fi
+
+if command -v mysqldump >/dev/null 2>&1; then
+  backup_stamp=`$(date -u +%Y%m%d%H%M%S)
+  mysqldump --single-transaction --quick reclamos_auto | gzip > "/root/backups/reclamos_auto-predeploy-`$backup_stamp.sql.gz"
 fi
 
 # Keep runtime data generated on the server. These folders contain uploaded

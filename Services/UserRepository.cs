@@ -31,8 +31,8 @@ namespace ReclamosWhatsApp.Services
                     u.LastPasswordChange,
                     r.Id Role_Id,
                     r.Name Role_Name
-                FROM Users u 
-                INNER JOIN Roles r ON u.RoleId = r.Id 
+                FROM Users u
+                LEFT JOIN Roles r ON u.RoleId = r.Id
                 WHERE u.Username = @Username";
 
             if (!includeInactive)
@@ -56,8 +56,8 @@ namespace ReclamosWhatsApp.Services
                 LastPasswordChange = row.LastPasswordChange,
                 Role = new Role
                 {
-                    Id = row.Role_Id,
-                    Name = row.Role_Name
+                    Id = row.Role_Id is null ? row.RoleId : row.Role_Id,
+                    Name = Convert.ToString(row.Role_Name) ?? ""
                 }
             };
         }
@@ -73,9 +73,9 @@ namespace ReclamosWhatsApp.Services
                     u.RoleId,
                     u.IsActive,
                     u.CustomPermissionsJson,
-                    r.Name RoleName
+                    COALESCE(r.Name, 'SIN_ROL') RoleName
                 FROM Users u
-                INNER JOIN Roles r ON u.RoleId = r.Id
+                LEFT JOIN Roles r ON u.RoleId = r.Id
                 ORDER BY u.Username;";
 
             return await connection.QueryAsync<UserAdminViewModel>(sql);
@@ -84,6 +84,7 @@ namespace ReclamosWhatsApp.Services
         public async Task<IEnumerable<Role>> GetRolesAsync()
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 SELECT Id, Name
                 FROM Roles
@@ -95,6 +96,7 @@ namespace ReclamosWhatsApp.Services
         public async Task<int> CreateUserAsync(string username, string passwordHash, int roleId)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 INSERT INTO Users (Username, PasswordHash, RoleId, IsActive)
                 VALUES (@Username, @PasswordHash, @RoleId, 1);
@@ -106,12 +108,14 @@ namespace ReclamosWhatsApp.Services
         public async Task<int?> GetRoleIdByNameAsync(string roleName)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             return await connection.ExecuteScalarAsync<int?>("SELECT Id FROM Roles WHERE Name = @roleName LIMIT 1;", new { roleName });
         }
 
         public async Task<int> EnsureRoleAsync(string roleName)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             await connection.ExecuteAsync("INSERT IGNORE INTO Roles (Name) VALUES (@roleName);", new { roleName });
             var roleId = await connection.ExecuteScalarAsync<int?>("SELECT Id FROM Roles WHERE Name = @roleName LIMIT 1;", new { roleName });
             return roleId ?? 1;
@@ -120,12 +124,14 @@ namespace ReclamosWhatsApp.Services
         public async Task<bool> RoleExistsAsync(int roleId)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             return await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Roles WHERE Id = @roleId;", new { roleId }) > 0;
         }
 
         public async Task UpdateUserAsync(int id, int roleId, bool isActive)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             const string sql = @"
                 UPDATE Users
                 SET RoleId = @roleId,
@@ -153,6 +159,7 @@ namespace ReclamosWhatsApp.Services
         public async Task DeleteUserAsync(int id)
         {
             using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
             await connection.ExecuteAsync("DELETE FROM Users WHERE Id = @id;", new { id });
         }
 
