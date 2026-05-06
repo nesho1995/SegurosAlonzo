@@ -194,7 +194,7 @@ public class ConfiguracionEmpresaApiController : ControllerBase
             ? "Prueba de WhatsApp desde Seguros Alonzo."
             : request.Mensaje.Trim();
 
-        var result = await _whatsApp.SendTextAsync(telefono, mensaje);
+        var result = await _whatsApp.SendConfiguredMessageAsync(telefono, mensaje);
         await _auditoria.RegistrarAsync(
             result.ok ? "PROBAR_WHATSAPP_OK" : "PROBAR_WHATSAPP_ERROR",
             "CONFIGURACION",

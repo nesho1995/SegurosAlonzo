@@ -49,6 +49,25 @@ public class WhatsAppService
         return await SendTextAsync(r.Celular ?? "", r.MensajeWhatsApp ?? "", config);
     }
 
+    public async Task<(bool ok, string response)> SendConfiguredMessageAsync(
+        string numeroDestino,
+        string mensaje,
+        int? usuarioId = null)
+    {
+        var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+
+        if (!string.IsNullOrWhiteSpace(config.TemplateName))
+            return await SendWhatsAppTemplateAsync(
+                numeroDestino,
+                config.TemplateName,
+                config.LanguageCode,
+                config,
+                mensaje,
+                usuarioId);
+
+        return await SendTextAsync(numeroDestino, mensaje, config, usuarioId);
+    }
+
     public async Task<(bool ok, string response)> SendTextAsync(string numeroDestino, string mensaje, int? usuarioId = null)
     {
         var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
@@ -87,29 +106,7 @@ public class WhatsAppService
         {
             try
             {
-                string? waMessageId = null;
-                try
-                {
-                    using var doc = JsonDocument.Parse(response);
-                    if (doc.RootElement.TryGetProperty("messages", out var msgs))
-                    {
-                        var first = msgs.EnumerateArray().FirstOrDefault();
-                        waMessageId = first.TryGetProperty("id", out var mid) ? mid.GetString() : null;
-                    }
-                }
-                catch { /* ignorar si no se puede parsear */ }
-
-                var convId = await _conversaciones.GetOrCreateConversacionAsync(normalizedPhone, null);
-                await _conversaciones.SaveMensajeAsync(new WhatsAppMensaje
-                {
-                    ConversacionId    = convId,
-                    WhatsappMessageId = waMessageId,
-                    Direccion         = "saliente",
-                    TipoContenido     = "texto",
-                    Contenido         = mensaje,
-                    Estado            = "enviado",
-                    UsuarioId         = usuarioId
-                });
+                await SaveOutgoingMessageAsync(normalizedPhone, mensaje, response, usuarioId);
             }
             catch (Exception ex)
             {
@@ -130,7 +127,8 @@ public class WhatsAppService
         string templateName,
         string languageCode,
         WhatsAppConfig config,
-        string mensajeTexto)
+        string mensajeTexto,
+        int? usuarioId = null)
     {
         if (!config.Enabled)
             return (false, "WhatsApp está desactivado desde Configuración → WhatsApp.");
@@ -165,7 +163,21 @@ public class WhatsAppService
             }
         };
 
-        return await PostToMetaAsync(config, body);
+        var (ok, response) = await PostToMetaAsync(config, body);
+
+        if (ok)
+        {
+            try
+            {
+                await SaveOutgoingMessageAsync(normalizedPhone, mensajeTexto, response, usuarioId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "No se pudo guardar mensaje saliente de plantilla en bandeja para {Tel}", normalizedPhone);
+            }
+        }
+
+        return (ok, response);
     }
 
     private async Task<(bool ok, string response)> PostToMetaAsync(WhatsAppConfig config, object body)
@@ -235,7 +247,7 @@ Lugar: {r.LugarAccidente}
 
 Ya se marcaron todos los documentos como recibidos.".Trim();
 
-        return await SendTextAsync(adminNumber, mensaje);
+        return await SendConfiguredMessageAsync(adminNumber, mensaje);
     }
 
     public async Task<(bool ok, string response)> EnviarRecordatorioAsync(ReclamoWhatsApp r, IEnumerable<ReclamoDocumento>? documentosPendientes = null)
@@ -262,7 +274,7 @@ Por favor enviarnos esa documentación para poder avanzar con el trámite.
 
 Atentamente.".Trim();
 
-        return await SendTextAsync(r.Celular ?? "", mensaje);
+        return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
 
     public async Task<(bool ok, string response)> EnviarDocumentosRecibidosAsync(ReclamoWhatsApp r)
@@ -277,7 +289,7 @@ Continuaremos con la revisión y le estaremos informando cualquier avance del tr
 
 Atentamente.".Trim();
 
-        return await SendTextAsync(r.Celular ?? "", mensaje);
+        return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────
@@ -286,5 +298,37 @@ Atentamente.".Trim();
     {
         var normalized = _phones.NormalizeMany(value);
         return normalized.WhatsappReady ? normalized.PrincipalWhatsApp : "";
+    }
+
+    private async Task SaveOutgoingMessageAsync(string normalizedPhone, string mensaje, string metaResponse, int? usuarioId)
+    {
+        var convId = await _conversaciones.GetOrCreateConversacionAsync(normalizedPhone, null);
+        await _conversaciones.SaveMensajeAsync(new WhatsAppMensaje
+        {
+            ConversacionId = convId,
+            WhatsappMessageId = ExtractWhatsAppMessageId(metaResponse),
+            Direccion = "saliente",
+            TipoContenido = "texto",
+            Contenido = mensaje,
+            Estado = "enviado",
+            UsuarioId = usuarioId
+        });
+    }
+
+    private static string? ExtractWhatsAppMessageId(string response)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(response);
+            if (!doc.RootElement.TryGetProperty("messages", out var msgs))
+                return null;
+
+            var first = msgs.EnumerateArray().FirstOrDefault();
+            return first.TryGetProperty("id", out var mid) ? mid.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

@@ -81,7 +81,7 @@ public class AutomaticWhatsAppService
             return;
         }
 
-        var result = await _whatsApp.SendTextAsync(phone, reclamo.MensajeWhatsApp ?? "");
+        var result = await _whatsApp.SendConfiguredMessageAsync(phone, reclamo.MensajeWhatsApp ?? "");
         await _reclamos.UpdateEstadoAsync(reclamoId, result.ok ? "ENVIADO" : "ERROR", result.ok ? null : result.response);
         await _enviosLog.RegistrarAsync($"reclamo:{reclamoId}:auto", "RECLAMO", reclamoId, phone, "RECLAMO_NUEVO", true, result.ok ? "ENVIADO" : "ERROR", reclamo.MensajeWhatsApp, result.response);
         await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_WHATSAPP_AUTO" : "ERROR_WHATSAPP", "RECLAMO", reclamoId, result.ok ? "WhatsApp automatico enviado para reclamo." : "Fallo el WhatsApp automatico del reclamo.");
@@ -150,7 +150,7 @@ public class AutomaticWhatsAppService
             return (false, "Envio duplicado evitado.");
         }
 
-        var result = await _whatsApp.SendTextAsync(phone, recordatorio.Mensaje);
+        var result = await _whatsApp.SendConfiguredMessageAsync(phone, recordatorio.Mensaje);
         await _recordatorios.MarcarEnvioAsync(recordatorio.Id, result.ok, result.response);
         await _enviosLog.RegistrarAsync(reference, "RECORDATORIO", recordatorio.Id, phone, recordatorio.Tipo, automatico, result.ok ? "ENVIADO" : "ERROR", recordatorio.Mensaje, result.response);
         await _auditoria.RegistrarAsync(result.ok ? (automatico ? "ENVIAR_RECORDATORIO_AUTO" : "ENVIAR_RECORDATORIO") : "ERROR_RECORDATORIO", "RECORDATORIO", recordatorio.Id, result.ok ? "Recordatorio enviado por WhatsApp." : "No se pudo enviar el recordatorio.");
