@@ -58,7 +58,8 @@ public class AutomaticWhatsAppService
             return;
         }
 
-        if (await _enviosLog.ExistsAsync($"reclamo:{reclamoId}:auto"))
+        var autoReference = $"reclamo:{reclamoId}:auto";
+        if (IsAlreadyHandled(await _enviosLog.GetEstadoAsync(autoReference)))
             return;
 
         var phone = NormalizePhone(reclamo.Celular);
@@ -83,7 +84,7 @@ public class AutomaticWhatsAppService
 
         var result = await _whatsApp.SendTemplateAsync(reclamo);
         await _reclamos.UpdateEstadoAsync(reclamoId, result.ok ? "ENVIADO" : "ERROR", result.ok ? null : result.response);
-        await _enviosLog.RegistrarAsync($"reclamo:{reclamoId}:auto", "RECLAMO", reclamoId, phone, "RECLAMO_NUEVO", true, result.ok ? "ENVIADO" : "ERROR", reclamo.MensajeWhatsApp, result.response);
+        await _enviosLog.RegistrarAsync(autoReference, "RECLAMO", reclamoId, phone, "RECLAMO_NUEVO", true, result.ok ? "ENVIADO" : "ERROR", reclamo.MensajeWhatsApp, result.response);
         await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_WHATSAPP_AUTO" : "ERROR_WHATSAPP", "RECLAMO", reclamoId, result.ok ? "WhatsApp automatico enviado para reclamo." : "Fallo el WhatsApp automatico del reclamo.");
 
         if (result.ok)
@@ -117,7 +118,7 @@ public class AutomaticWhatsAppService
                 continue;
             }
 
-            if (await _enviosLog.ExistsAsync($"recordatorio:{recordatorio.Id}:auto"))
+            if (IsAlreadyHandled(await _enviosLog.GetEstadoAsync($"recordatorio:{recordatorio.Id}:auto")))
                 continue;
 
             await EnviarRecordatorioAsync(recordatorio, automatico: true);
@@ -181,6 +182,12 @@ public class AutomaticWhatsAppService
             "RENOVACION" or "VENCIMIENTO" => config.AutoEnviarRecordatoriosPoliza,
             _ => false
         };
+    }
+
+    private static bool IsAlreadyHandled(string? estado)
+    {
+        return string.Equals(estado, "ENVIADO", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(estado, "DUPLICADO", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task NotifyPhoneErrorAsync(string entidadTipo, int entidadId, string referencia, string message)

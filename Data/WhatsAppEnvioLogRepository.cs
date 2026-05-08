@@ -43,6 +43,15 @@ public class WhatsAppEnvioLogRepository
             new { referencia }) > 0;
     }
 
+    public async Task<string?> GetEstadoAsync(string referencia)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+        return await cn.ExecuteScalarAsync<string?>(
+            "SELECT estado FROM whatsapp_envios_log WHERE referencia = @referencia LIMIT 1;",
+            new { referencia });
+    }
+
     public async Task RegistrarAsync(string referencia, string entidadTipo, int? entidadId, string? telefono, string tipoEvento, bool automatico, string estado, string? mensaje, string? respuesta)
     {
         await EnsureSchemaAsync();

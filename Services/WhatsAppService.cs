@@ -8,6 +8,8 @@ namespace ReclamosWhatsApp.Services;
 
 public class WhatsAppService
 {
+    private const int SingleTemplateParameterMaxLength = 900;
+
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
     private readonly PhoneNormalizationService _phones;
@@ -133,14 +135,40 @@ public class WhatsAppService
         WhatsAppConfig config,
         string mensajeTexto,
         int? usuarioId = null)
-        => await SendWhatsAppTemplateAsync(
-            numeroDestino,
-            templateName,
-            languageCode,
-            config,
-            [mensajeTexto],
-            mensajeTexto,
-            usuarioId);
+    {
+        var chunks = SplitTemplateParameter(mensajeTexto, SingleTemplateParameterMaxLength).ToList();
+        if (chunks.Count <= 1)
+        {
+            return await SendWhatsAppTemplateAsync(
+                numeroDestino,
+                templateName,
+                languageCode,
+                config,
+                [mensajeTexto],
+                mensajeTexto,
+                usuarioId);
+        }
+
+        var responses = new List<string>();
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            var chunk = chunks[i];
+            var result = await SendWhatsAppTemplateAsync(
+                numeroDestino,
+                templateName,
+                languageCode,
+                config,
+                [chunk],
+                chunk,
+                usuarioId);
+
+            responses.Add(result.response);
+            if (!result.ok)
+                return (false, $"Parte {i + 1}/{chunks.Count}: {result.response}");
+        }
+
+        return (true, $"Mensaje enviado en {chunks.Count} partes. {string.Join(" | ", responses)}");
+    }
 
     private async Task<(bool ok, string response)> SendWhatsAppTemplateAsync(
         string numeroDestino,
@@ -409,6 +437,34 @@ Atentamente.".Trim();
     {
         var normalized = _phones.NormalizeMany(value);
         return normalized.WhatsappReady ? normalized.PrincipalWhatsApp : "";
+    }
+
+    private static IEnumerable<string> SplitTemplateParameter(string? value, int maxLength)
+    {
+        var text = (value ?? "").Trim();
+        if (text.Length <= maxLength)
+        {
+            yield return text;
+            yield break;
+        }
+
+        var remaining = text;
+        while (remaining.Length > maxLength)
+        {
+            var splitAt = remaining.LastIndexOf("\n\n", maxLength, StringComparison.Ordinal);
+            if (splitAt < maxLength / 2)
+                splitAt = remaining.LastIndexOf('\n', maxLength);
+            if (splitAt < maxLength / 2)
+                splitAt = remaining.LastIndexOf(' ', maxLength);
+            if (splitAt < maxLength / 2)
+                splitAt = maxLength;
+
+            yield return remaining[..splitAt].Trim();
+            remaining = remaining[splitAt..].Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(remaining))
+            yield return remaining;
     }
 
     private async Task SaveOutgoingMessageAsync(string normalizedPhone, string mensaje, string metaResponse, int? usuarioId)
