@@ -5,10 +5,12 @@ import {
 } from 'lucide-react'
 import {
   asignarAgente, asociarReclamo, cambiarEstado,
+  buscarReclamos,
   getAgentes, getConversaciones, getMensajes,
   marcarLeido, mediaUrl, responder,
   type AgenteSummary, type ConversacionDetalle,
   type ConversacionListItem, type MensajeDto,
+  type ReclamoLinkOption,
 } from '../api/whatsappBandeja'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,6 +42,15 @@ function ultimoPreview(conv: ConversacionListItem) {
   return conv.ultimoMensaje?.slice(0, 60) ?? null
 }
 
+function nombreConversacion(conv: {
+  nombreCliente?: string | null
+  nombreContacto?: string | null
+  conductorReclamo?: string | null
+  telefono: string
+}) {
+  return conv.nombreCliente || conv.nombreContacto || conv.conductorReclamo || conv.telefono
+}
+
 // ─── Vista principal ──────────────────────────────────────────────────────────
 
 export function WhatsAppBandejaView() {
@@ -63,6 +74,8 @@ export function WhatsAppBandejaView() {
 
   const [agentes, setAgentes] = useState<AgenteSummary[]>([])
   const [reclamoInput, setReclamoInput] = useState('')
+  const [reclamosSugeridos, setReclamosSugeridos] = useState<ReclamoLinkOption[]>([])
+  const [buscandoReclamos, setBuscandoReclamos] = useState(false)
   const [vinculandoReclamo, setVinculandoReclamo] = useState(false)
   const [mostrarVincular, setMostrarVincular] = useState(false)
 
@@ -197,19 +210,31 @@ export function WhatsAppBandejaView() {
 
   // ─── Vincular reclamo ────────────────────────────────────────────────────────
 
-  async function vincularReclamo() {
+  async function cargarReclamosSugeridos(query = reclamoInput) {
     if (!convSeleccionada) return
-    const reclamoId = reclamoInput.trim() ? parseInt(reclamoInput.trim()) : null
-    if (reclamoInput.trim() && isNaN(reclamoId!)) {
-      setMsgError('Ingresa un ID numérico de reclamo.')
-      return
+    setBuscandoReclamos(true)
+    try {
+      const items = await buscarReclamos({
+        buscar: query.trim() || undefined,
+        telefono: convSeleccionada.telefono,
+      })
+      setReclamosSugeridos(items)
+    } catch (e) {
+      setMsgError(e instanceof Error ? e.message : 'Error buscando reclamos.')
+    } finally {
+      setBuscandoReclamos(false)
     }
+  }
+
+  async function vincularReclamo(reclamoId: number | null) {
+    if (!convSeleccionada) return
     setVinculandoReclamo(true)
     setMsgError(null)
     try {
       const { conversacion } = await asociarReclamo(convSeleccionada.id, reclamoId)
       setConvSeleccionada(conversacion)
       setReclamoInput('')
+      setReclamosSugeridos([])
       setMostrarVincular(false)
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error vinculando reclamo.')
@@ -361,7 +386,7 @@ export function WhatsAppBandejaView() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {convSeleccionada.nombreContacto ?? convSeleccionada.telefono}
+                    {nombreConversacion(convSeleccionada)}
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b' }}>{convSeleccionada.telefono}</div>
                 </div>
@@ -403,14 +428,18 @@ export function WhatsAppBandejaView() {
                     <ClipboardList size={10} />
                     {convSeleccionada.numeroReclamo ?? `Reclamo #${convSeleccionada.reclamoId}`}
                     {convSeleccionada.conductorReclamo && ` · ${convSeleccionada.conductorReclamo}`}
-                    <button onClick={e => { e.stopPropagation(); asociarReclamo(convSeleccionada.id, null).then(() => setConvSeleccionada(p => p ? { ...p, reclamoId: null, numeroReclamo: null } : p)) }}
+                    <button onClick={e => { e.stopPropagation(); vincularReclamo(null) }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: 2 }}
                       title="Desvincular reclamo">
                       <Unlink size={9} style={{ color: '#94a3b8' }} />
                     </button>
                   </span>
                 ) : (
-                  <button onClick={() => setMostrarVincular(v => !v)}
+                  <button onClick={() => {
+                    const next = !mostrarVincular
+                    setMostrarVincular(next)
+                    if (next) void cargarReclamosSugeridos('')
+                  }}
                     style={{
                       fontSize: 11, background: '#f8fafc', color: '#64748b',
                       border: '1px dashed #cbd5e1', borderRadius: 4, padding: '2px 7px',
@@ -439,25 +468,47 @@ export function WhatsAppBandejaView() {
 
               {/* Vincular reclamo: input inline */}
               {mostrarVincular && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
-                  <input type="number" placeholder="ID del reclamo..." value={reclamoInput}
-                    onChange={e => setReclamoInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && vincularReclamo()}
-                    style={{
-                      flex: 1, padding: '5px 8px', border: '1px solid #e2e8f0',
-                      borderRadius: 5, fontSize: 12, outline: 'none',
-                    }} />
-                  <button onClick={vincularReclamo} disabled={vinculandoReclamo}
-                    style={{
-                      padding: '5px 10px', background: '#25d366', color: '#fff',
-                      border: 'none', borderRadius: 5, fontSize: 12, cursor: 'pointer',
-                    }}>
-                    {vinculandoReclamo ? '...' : 'Vincular'}
-                  </button>
-                  <button onClick={() => setMostrarVincular(false)}
-                    style={{ padding: '5px 8px', background: '#f1f5f9', border: 'none', borderRadius: 5, fontSize: 12, cursor: 'pointer' }}>
-                    Cancelar
-                  </button>
+                <div style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input type="text" placeholder="Buscar reclamo, cliente, poliza o placa..." value={reclamoInput}
+                      onChange={e => {
+                        setReclamoInput(e.target.value)
+                        void cargarReclamosSugeridos(e.target.value)
+                      }}
+                      style={{
+                        flex: 1, padding: '5px 8px', border: '1px solid #e2e8f0',
+                        borderRadius: 5, fontSize: 12, outline: 'none',
+                      }} />
+                    <button onClick={() => cargarReclamosSugeridos()} disabled={buscandoReclamos}
+                      style={{ padding: '5px 10px', background: '#f1f5f9', border: 'none', borderRadius: 5, fontSize: 12, cursor: 'pointer' }}>
+                      {buscandoReclamos ? 'Buscando...' : 'Buscar'}
+                    </button>
+                    <button onClick={() => setMostrarVincular(false)}
+                      style={{ padding: '5px 8px', background: '#f1f5f9', border: 'none', borderRadius: 5, fontSize: 12, cursor: 'pointer' }}>
+                      Cerrar
+                    </button>
+                  </div>
+                  <div style={{ maxHeight: 190, overflowY: 'auto', display: 'grid', gap: 4 }}>
+                    {reclamosSugeridos.map(item => (
+                      <button key={item.id} onClick={() => vincularReclamo(item.id)} disabled={vinculandoReclamo}
+                        style={{
+                          textAlign: 'left', border: item.telefonoCoincide ? '1px solid #25d366' : '1px solid #e2e8f0',
+                          background: item.telefonoCoincide ? '#f0fdf4' : '#fff', borderRadius: 6,
+                          padding: '6px 8px', cursor: 'pointer', fontSize: 12,
+                        }}>
+                        <strong>{item.referencia}</strong> · {item.cliente}
+                        <div style={{ color: '#64748b', marginTop: 2 }}>
+                          {item.poliza && `Poliza ${item.poliza} · `}
+                          {item.placa && `Placa ${item.placa} · `}
+                          {item.estado}
+                          {item.telefonoCoincide && ' · telefono coincide'}
+                        </div>
+                      </button>
+                    ))}
+                    {!buscandoReclamos && reclamosSugeridos.length === 0 && (
+                      <span style={{ color: '#94a3b8', fontSize: 12 }}>No hay reclamos encontrados.</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -562,7 +613,7 @@ function ConvItem({ conv, selected, onClick }: {
             fontWeight: conv.noLeidos > 0 ? 700 : 500, fontSize: 13,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1,
           }}>
-            {conv.nombreContacto ?? conv.telefono}
+            {nombreConversacion(conv)}
           </span>
           <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>
             {timeFmt(conv.ultimaActividad)}

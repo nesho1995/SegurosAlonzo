@@ -14,15 +14,18 @@ namespace ReclamosWhatsApp.Controllers.Api;
 public class WhatsAppBandejaApiController : ControllerBase
 {
     private readonly WhatsAppConversacionRepository _repo;
+    private readonly ReclamoRepository _reclamos;
     private readonly WhatsAppService _whatsapp;
     private readonly AuditoriaService _auditoria;
 
     public WhatsAppBandejaApiController(
         WhatsAppConversacionRepository repo,
+        ReclamoRepository reclamos,
         WhatsAppService whatsapp,
         AuditoriaService auditoria)
     {
         _repo = repo;
+        _reclamos = reclamos;
         _whatsapp = whatsapp;
         _auditoria = auditoria;
     }
@@ -144,6 +147,41 @@ public class WhatsAppBandejaApiController : ControllerBase
         return Ok(agentes);
     }
 
+    // GET /api/whatsapp/bandeja/reclamos
+    [HttpGet("reclamos")]
+    public async Task<IActionResult> BuscarReclamos([FromQuery] string? buscar, [FromQuery] string? telefono)
+    {
+        var text = buscar?.Trim() ?? "";
+        var tel = OnlyDigits(telefono);
+        var reclamos = await _reclamos.GetAllAsync();
+
+        var filtrados = reclamos
+            .Where(x =>
+                string.IsNullOrWhiteSpace(text)
+                || (x.Reclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.NumeroReclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Conductor ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Asegurado ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Poliza ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Placa ?? "").Contains(text, StringComparison.OrdinalIgnoreCase))
+            .Select(x => new ReclamoLinkOption(
+                x.Id,
+                x.NumeroReclamo ?? x.Reclamo ?? $"#{x.Id}",
+                x.Conductor ?? x.Asegurado ?? "Cliente",
+                x.Poliza,
+                x.Placa,
+                x.Celular,
+                x.FechaNotificacion,
+                x.EstadoReclamo ?? x.Estado,
+                !string.IsNullOrWhiteSpace(tel) && OnlyDigits(x.Celular) == tel))
+            .OrderByDescending(x => x.TelefonoCoincide)
+            .ThenByDescending(x => x.FechaNotificacion ?? DateTime.MinValue)
+            .Take(25)
+            .ToList();
+
+        return Ok(filtrados);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private int? GetUserId()
@@ -151,6 +189,9 @@ public class WhatsAppBandejaApiController : ControllerBase
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier);
         return int.TryParse(raw, out var id) ? id : null;
     }
+
+    private static string OnlyDigits(string? value)
+        => new((value ?? "").Where(char.IsDigit).ToArray());
 }
 
 public record RespuestaRequest(string Mensaje);
@@ -158,3 +199,13 @@ public record EstadoRequest(string Estado);
 public record AsociarClienteRequest(int ClienteId);
 public record AsociarReclamoRequest(int? ReclamoId);
 public record AsignarAgenteRequest(int? AgenteId);
+public record ReclamoLinkOption(
+    int Id,
+    string Referencia,
+    string Cliente,
+    string? Poliza,
+    string? Placa,
+    string? Celular,
+    DateTime? FechaNotificacion,
+    string Estado,
+    bool TelefonoCoincide);

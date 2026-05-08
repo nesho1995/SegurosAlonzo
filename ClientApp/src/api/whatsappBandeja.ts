@@ -52,6 +52,18 @@ export interface AgenteSummary {
   roleName: string | null
 }
 
+export interface ReclamoLinkOption {
+  id: number
+  referencia: string
+  cliente: string
+  poliza: string | null
+  placa: string | null
+  celular: string | null
+  fechaNotificacion: string | null
+  estado: string
+  telefonoCoincide: boolean
+}
+
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: 'include',
@@ -133,6 +145,16 @@ export async function asignarAgente(conversacionId: number, agenteId: number | n
 
 export async function getAgentes(): Promise<AgenteSummary[]> {
   return apiFetch('/api/whatsapp/bandeja/agentes')
+}
+
+export async function buscarReclamos(params: {
+  buscar?: string
+  telefono?: string
+}): Promise<ReclamoLinkOption[]> {
+  const qs = new URLSearchParams()
+  if (params.buscar) qs.set('buscar', params.buscar)
+  if (params.telefono) qs.set('telefono', params.telefono)
+  return apiFetch(`/api/whatsapp/bandeja/reclamos?${qs}`)
 }
 
 export function mediaUrl(mediaId: string, forceDownload = false): string {
