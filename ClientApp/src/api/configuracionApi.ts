@@ -30,6 +30,9 @@ export type WhatsAppConfig = {
   accessToken: string
   accessTokenMasked: string
   templateName: string
+  reclamoInitialTemplateName: string
+  reclamoReminderTemplateName: string
+  reclamoCompleteTemplateName: string
   languageCode: string
   adminWhatsAppNumber: string
   webhookVerifyToken: string

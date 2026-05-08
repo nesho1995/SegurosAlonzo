@@ -13,6 +13,8 @@ public class WhatsAppService
     private readonly PhoneNormalizationService _phones;
     private readonly AppSettingsRepository _settings;
     private readonly WhatsAppConversacionRepository _conversaciones;
+    private readonly TallerRepository _talleres;
+    private readonly EmpresaConfiguracionRepository _empresa;
     private readonly ILogger<WhatsAppService> _logger;
 
     public WhatsAppService(
@@ -21,6 +23,8 @@ public class WhatsAppService
         PhoneNormalizationService phones,
         AppSettingsRepository settings,
         WhatsAppConversacionRepository conversaciones,
+        TallerRepository talleres,
+        EmpresaConfiguracionRepository empresa,
         ILogger<WhatsAppService> logger)
     {
         _config = config;
@@ -28,6 +32,8 @@ public class WhatsAppService
         _phones = phones;
         _settings = settings;
         _conversaciones = conversaciones;
+        _talleres = talleres;
+        _empresa = empresa;
         _logger = logger;
     }
 
@@ -40,6 +46,9 @@ public class WhatsAppService
     public async Task<(bool ok, string response)> SendTemplateAsync(ReclamoWhatsApp r)
     {
         var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+
+        if (!string.IsNullOrWhiteSpace(config.ReclamoInitialTemplateName))
+            return await SendReclamoInitialTemplateAsync(r, config);
 
         if (!string.IsNullOrWhiteSpace(config.TemplateName))
             return await SendWhatsAppTemplateAsync(r.Celular ?? "", config.TemplateName, config.LanguageCode,
@@ -117,11 +126,6 @@ public class WhatsAppService
         return (ok, response);
     }
 
-    /// <summary>
-    /// Envía un mensaje usando una plantilla aprobada en Meta.
-    /// La plantilla debe tener un único parámetro {{1}} en el body
-    /// que recibirá el texto completo del mensaje.
-    /// </summary>
     private async Task<(bool ok, string response)> SendWhatsAppTemplateAsync(
         string numeroDestino,
         string templateName,
@@ -129,16 +133,33 @@ public class WhatsAppService
         WhatsAppConfig config,
         string mensajeTexto,
         int? usuarioId = null)
+        => await SendWhatsAppTemplateAsync(
+            numeroDestino,
+            templateName,
+            languageCode,
+            config,
+            [mensajeTexto],
+            mensajeTexto,
+            usuarioId);
+
+    private async Task<(bool ok, string response)> SendWhatsAppTemplateAsync(
+        string numeroDestino,
+        string templateName,
+        string languageCode,
+        WhatsAppConfig config,
+        IEnumerable<string> templateParameters,
+        string mensajeGuardado,
+        int? usuarioId = null)
     {
         if (!config.Enabled)
-            return (false, "WhatsApp está desactivado desde Configuración → WhatsApp.");
+            return (false, "WhatsApp esta desactivado desde Configuracion -> WhatsApp.");
 
         if (string.IsNullOrWhiteSpace(config.AccessToken) || string.IsNullOrWhiteSpace(config.PhoneNumberId))
-            return (false, "La configuración de WhatsApp está incompleta (token o Phone Number ID).");
+            return (false, "La configuracion de WhatsApp esta incompleta (token o Phone Number ID).");
 
         var normalizedPhone = NormalizePhone(numeroDestino);
         if (string.IsNullOrWhiteSpace(normalizedPhone))
-            return (false, "Cliente sin teléfono válido para WhatsApp.");
+            return (false, "Cliente sin telefono valido para WhatsApp.");
 
         var body = new
         {
@@ -154,10 +175,7 @@ public class WhatsAppService
                     new
                     {
                         type = "body",
-                        parameters = new[]
-                        {
-                            new { type = "text", text = mensajeTexto }
-                        }
+                        parameters = templateParameters.Select(x => new { type = "text", text = x ?? "" }).ToArray()
                     }
                 }
             }
@@ -169,7 +187,7 @@ public class WhatsAppService
         {
             try
             {
-                await SaveOutgoingMessageAsync(normalizedPhone, mensajeTexto, response, usuarioId);
+                await SaveOutgoingMessageAsync(normalizedPhone, mensajeGuardado, response, usuarioId);
             }
             catch (Exception ex)
             {
@@ -179,7 +197,6 @@ public class WhatsAppService
 
         return (ok, response);
     }
-
     private async Task<(bool ok, string response)> PostToMetaAsync(WhatsAppConfig config, object body)
     {
         var version = string.IsNullOrWhiteSpace(config.GraphVersion) ? "v18.0" : config.GraphVersion;
@@ -226,6 +243,44 @@ public class WhatsAppService
     }
 
     // ─── Mensajes específicos ─────────────────────────────────────────────────
+
+    private async Task<(bool ok, string response)> SendReclamoInitialTemplateAsync(ReclamoWhatsApp r, WhatsAppConfig config)
+    {
+        var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
+        var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
+        var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
+        var documentos = @"1. Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente.
+2. Certificacion de Transito.
+3. Tarjeta de identidad del conductor, ambos lados.
+4. Licencia del conductor, ambos lados.
+5. Boleta de circulacion del vehiculo asegurado.
+6. Inspeccion puntual de danos en Seguros Crefisa.
+7. Dos cotizaciones de talleres de la red, cuando aplique.
+8. Estar al dia con el pago de primas del seguro.";
+
+        var talleres = await BuildTalleresBlockAsync(r);
+        var mensaje = r.MensajeWhatsApp ?? $@"Buenas tardes, {nombre}.
+
+Reciba un cordial saludo. Le comunicamos que su reclamo fue notificado con fecha {fecha}, ocurrido en {lugar}.
+
+Para poder avanzar con la gestion debe completar la siguiente documentacion:
+
+{documentos}
+
+{talleres}
+
+Una vez se entregue completa la informacion, se evaluara la cobertura y la aplicacion de deducibles.
+
+Atentamente.";
+
+        return await SendWhatsAppTemplateAsync(
+            r.Celular ?? "",
+            config.ReclamoInitialTemplateName,
+            config.LanguageCode,
+            config,
+            [nombre, fecha, lugar, documentos, talleres],
+            mensaje);
+    }
 
     public async Task<(bool ok, string response)> NotificarAdminReclamoCompletoAsync(ReclamoWhatsApp r)
     {
@@ -274,6 +329,18 @@ Por favor enviarnos esa documentación para poder avanzar con el trámite.
 
 Atentamente.".Trim();
 
+        var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+        if (!string.IsNullOrWhiteSpace(config.ReclamoReminderTemplateName))
+        {
+            return await SendWhatsAppTemplateAsync(
+                r.Celular ?? "",
+                config.ReclamoReminderTemplateName,
+                config.LanguageCode,
+                config,
+                [nombre, referencia, lista],
+                mensaje);
+        }
+
         return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
 
@@ -289,10 +356,54 @@ Continuaremos con la revisión y le estaremos informando cualquier avance del tr
 
 Atentamente.".Trim();
 
+        var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+        if (!string.IsNullOrWhiteSpace(config.ReclamoCompleteTemplateName))
+        {
+            return await SendWhatsAppTemplateAsync(
+                r.Celular ?? "",
+                config.ReclamoCompleteTemplateName,
+                config.LanguageCode,
+                config,
+                [nombre, referencia],
+                mensaje);
+        }
+
         return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────
+
+    private async Task<string> BuildTalleresBlockAsync(ReclamoWhatsApp r)
+    {
+        var ciudad = DetectarCiudad(r.LugarAccidente);
+        var talleres = (await _talleres.SugerirAsync(ciudad, r.Aseguradora, r.TipoReclamo ?? "AUTOS")).Take(5).ToList();
+        if (talleres.Count > 0)
+        {
+            return $@"Talleres en red:
+{string.Join(Environment.NewLine, talleres.Select(x => $"- {x.Nombre}: {x.Direccion}{(string.IsNullOrWhiteSpace(x.Telefono) ? "" : $" / Tel. {x.Telefono}")}"))}";
+        }
+
+        var empresa = await _empresa.GetAsync();
+        return $@"Para coordinacion de taller o inspeccion, puede contactarse con la aseguradora o con nosotros para indicarle el proceso correspondiente.{(string.IsNullOrWhiteSpace(empresa.TelefonoEmpresa) ? "" : $"{Environment.NewLine}Telefono empresa: {empresa.TelefonoEmpresa}")}";
+    }
+
+    private static string? DetectarCiudad(string? lugar)
+    {
+        if (string.IsNullOrWhiteSpace(lugar))
+            return null;
+
+        if (lugar.Contains("TEGUCIGALPA", StringComparison.OrdinalIgnoreCase)
+            || lugar.Contains("TGU", StringComparison.OrdinalIgnoreCase)
+            || lugar.Contains("FRANCISCO MORAZAN", StringComparison.OrdinalIgnoreCase))
+            return "TEGUCIGALPA";
+
+        if (lugar.Contains("SAN PEDRO SULA", StringComparison.OrdinalIgnoreCase)
+            || lugar.Contains("S.P.S", StringComparison.OrdinalIgnoreCase)
+            || lugar.Contains("CORTES", StringComparison.OrdinalIgnoreCase))
+            return "SAN PEDRO SULA";
+
+        return lugar.Trim();
+    }
 
     private string NormalizePhone(string? value)
     {

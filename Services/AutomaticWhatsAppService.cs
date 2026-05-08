@@ -81,7 +81,7 @@ public class AutomaticWhatsAppService
             return;
         }
 
-        var result = await _whatsApp.SendConfiguredMessageAsync(phone, reclamo.MensajeWhatsApp ?? "");
+        var result = await _whatsApp.SendTemplateAsync(reclamo);
         await _reclamos.UpdateEstadoAsync(reclamoId, result.ok ? "ENVIADO" : "ERROR", result.ok ? null : result.response);
         await _enviosLog.RegistrarAsync($"reclamo:{reclamoId}:auto", "RECLAMO", reclamoId, phone, "RECLAMO_NUEVO", true, result.ok ? "ENVIADO" : "ERROR", reclamo.MensajeWhatsApp, result.response);
         await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_WHATSAPP_AUTO" : "ERROR_WHATSAPP", "RECLAMO", reclamoId, result.ok ? "WhatsApp automatico enviado para reclamo." : "Fallo el WhatsApp automatico del reclamo.");

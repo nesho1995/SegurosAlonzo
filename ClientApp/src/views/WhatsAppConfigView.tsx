@@ -14,6 +14,9 @@ const emptyConfig: WhatsAppConfig = {
   accessToken: '',
   accessTokenMasked: '',
   templateName: '',
+  reclamoInitialTemplateName: '',
+  reclamoReminderTemplateName: '',
+  reclamoCompleteTemplateName: '',
   languageCode: 'es',
   adminWhatsAppNumber: '',
   webhookVerifyToken: '',
@@ -186,11 +189,38 @@ export function WhatsAppConfigView() {
 
             <div className="form-grid">
               <label className="field wide-field">
-                <span>Nombre de la plantilla en Meta</span>
+                <span>Plantilla generica en Meta</span>
                 <input
-                  placeholder="Ej: notificacion_cliente (debe estar aprobada en Meta)"
+                  placeholder="Opcional, para pruebas o avisos generales"
                   value={config.templateName}
                   onChange={e => setConfig({ ...config, templateName: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Plantilla reclamo inicial</span>
+                <input
+                  placeholder="reclamo_documentos_inicial_es"
+                  value={config.reclamoInitialTemplateName}
+                  onChange={e => setConfig({ ...config, reclamoInitialTemplateName: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Plantilla recordatorio documentos</span>
+                <input
+                  placeholder="reclamo_recordatorio_documentos_es"
+                  value={config.reclamoReminderTemplateName}
+                  onChange={e => setConfig({ ...config, reclamoReminderTemplateName: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Plantilla documentos completos</span>
+                <input
+                  placeholder="reclamo_documentos_completos_es"
+                  value={config.reclamoCompleteTemplateName}
+                  onChange={e => setConfig({ ...config, reclamoCompleteTemplateName: e.target.value })}
                 />
               </label>
 
@@ -200,10 +230,10 @@ export function WhatsAppConfigView() {
                   <strong>Cómo crear la plantilla:</strong>
                   <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
                     <li>Ve a <strong>Meta Business Manager → WhatsApp → Manage Templates</strong></li>
-                    <li>Crea una plantilla de tipo <strong>Utility</strong> o <strong>Marketing</strong></li>
-                    <li>En el cuerpo del mensaje escribe: <code>{'{{1}}'}</code> (un solo parámetro)</li>
+                    <li>Crea plantillas de tipo <strong>Utility</strong></li>
+                    <li>Usa las plantillas aprobadas para reclamo inicial, recordatorio y documentos completos</li>
                     <li>Espera aprobación (24-48h)</li>
-                    <li>Copia el nombre exacto aquí arriba</li>
+                    <li>Copia los nombres exactos aquí arriba</li>
                   </ol>
                   <br />
                   Si dejas este campo vacío, el sistema intenta enviar texto libre (solo funciona si el cliente te escribió antes).
@@ -213,7 +243,7 @@ export function WhatsAppConfigView() {
               {config.templateName && (
                 <div className="inline-alert success wide-field">
                   <CheckCircle2 size={15} />
-                  El sistema usará la plantilla <strong>"{config.templateName}"</strong> para todos los mensajes automáticos.
+                  El sistema usará la plantilla generica <strong>"{config.templateName}"</strong> cuando no aplique una plantilla especifica.
                 </div>
               )}
             </div>
