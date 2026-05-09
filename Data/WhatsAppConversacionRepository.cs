@@ -302,6 +302,29 @@ public class WhatsAppConversacionRepository
         return (items, total);
     }
 
+    public async Task<WhatsAppMensaje?> GetMensajeByIdAsync(int id)
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.QueryFirstOrDefaultAsync<WhatsAppMensaje>(@"
+            SELECT
+                id Id,
+                conversacion_id ConversacionId,
+                whatsapp_message_id WhatsappMessageId,
+                direccion Direccion,
+                tipo_contenido TipoContenido,
+                contenido Contenido,
+                media_id MediaId,
+                media_url MediaUrl,
+                media_tipo_mime MediaTipoMime,
+                media_nombre MediaNombre,
+                estado Estado,
+                usuario_id UsuarioId,
+                creado_en CreadoEn
+            FROM whatsapp_mensajes
+            WHERE id = @id",
+            new { id });
+    }
+
     public async Task ActualizarEstadoMensajeAsync(string whatsappMessageId, string estado)
     {
         using var cn = _factory.CreateConnection();

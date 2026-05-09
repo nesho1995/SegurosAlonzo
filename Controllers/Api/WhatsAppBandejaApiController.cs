@@ -4,7 +4,9 @@ using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
 using ReclamosWhatsApp.Security;
 using ReclamosWhatsApp.Services;
+using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace ReclamosWhatsApp.Controllers.Api;
 
@@ -16,18 +18,33 @@ public class WhatsAppBandejaApiController : ControllerBase
     private readonly WhatsAppConversacionRepository _repo;
     private readonly ReclamoRepository _reclamos;
     private readonly WhatsAppService _whatsapp;
+    private readonly DocumentoStorageService _documentoStorage;
+    private readonly AppSettingsRepository _settings;
+    private readonly IConfiguration _config;
+    private readonly HttpClient _http;
     private readonly AuditoriaService _auditoria;
+    private readonly ILogger<WhatsAppBandejaApiController> _logger;
 
     public WhatsAppBandejaApiController(
         WhatsAppConversacionRepository repo,
         ReclamoRepository reclamos,
         WhatsAppService whatsapp,
-        AuditoriaService auditoria)
+        DocumentoStorageService documentoStorage,
+        AppSettingsRepository settings,
+        IConfiguration config,
+        HttpClient http,
+        AuditoriaService auditoria,
+        ILogger<WhatsAppBandejaApiController> logger)
     {
         _repo = repo;
         _reclamos = reclamos;
         _whatsapp = whatsapp;
+        _documentoStorage = documentoStorage;
+        _settings = settings;
+        _config = config;
+        _http = http;
         _auditoria = auditoria;
+        _logger = logger;
     }
 
     // GET /api/whatsapp/bandeja
@@ -173,13 +190,88 @@ public class WhatsAppBandejaApiController : ControllerBase
                 x.Celular,
                 x.FechaNotificacion,
                 x.EstadoReclamo ?? x.Estado,
-                !string.IsNullOrWhiteSpace(tel) && OnlyDigits(x.Celular) == tel))
+                PhoneMatches(OnlyDigits(x.Celular), tel)))
             .OrderByDescending(x => x.TelefonoCoincide)
             .ThenByDescending(x => x.FechaNotificacion ?? DateTime.MinValue)
             .Take(25)
             .ToList();
 
         return Ok(filtrados);
+    }
+
+    // POST /api/whatsapp/bandeja/mensajes/{mensajeId}/guardar-documento
+    [HttpPost("mensajes/{mensajeId:int}/guardar-documento")]
+    [Authorize(Policy = Permissions.DocumentosSubir)]
+    public async Task<IActionResult> GuardarDocumentoDesdeMensaje(int mensajeId, [FromBody] GuardarDocumentoWhatsAppRequest req)
+    {
+        if (req.ReclamoId <= 0)
+            return BadRequest(new { error = "Selecciona un reclamo valido." });
+
+        var reclamo = await _reclamos.GetByIdAsync(req.ReclamoId);
+        if (reclamo is null)
+            return NotFound(new { error = "Reclamo no encontrado." });
+
+        var msg = await _repo.GetMensajeByIdAsync(mensajeId);
+        if (msg is null || string.IsNullOrWhiteSpace(msg.MediaId))
+            return NotFound(new { error = "El mensaje no tiene archivo para guardar." });
+        if (!string.Equals(msg.Direccion, "entrante", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Solo se guardan archivos recibidos del cliente." });
+
+        await _reclamos.CrearDocumentosInicialesAsync(req.ReclamoId);
+        var documentosChecklist = (await _reclamos.GetDocumentosAsync(req.ReclamoId)).ToList();
+        var seleccionado = documentosChecklist.FirstOrDefault(x => x.Id == req.ReclamoDocumentoId);
+        if (seleccionado is null)
+            return BadRequest(new { error = "Selecciona el check de documento que corresponde." });
+
+        try
+        {
+            var media = await DescargarMediaMetaAsync(msg);
+            await using (media.Stream)
+            {
+                var documento = await _documentoStorage.GuardarDesdeStreamAsync(
+                    media.Stream,
+                    media.FileName,
+                    media.ContentType,
+                    media.ContentLength,
+                    "RECLAMO",
+                    req.ReclamoId,
+                    seleccionado.Documento,
+                    GetUserId());
+
+                var yaEstabaCompleto = await _reclamos.TodosDocumentosRecibidosAsync(req.ReclamoId);
+                await _reclamos.ActualizarDocumentoAsync(seleccionado.Id, req.ReclamoId, true);
+                var completo = await _reclamos.TodosDocumentosRecibidosAsync(req.ReclamoId);
+                await _reclamos.UpdateEstadoAsync(req.ReclamoId, completo ? "COMPLETO" : "EN_SEGUIMIENTO");
+
+                if (completo && !yaEstabaCompleto)
+                {
+                    var result = await _whatsapp.EnviarDocumentosRecibidosAsync(reclamo);
+                    await _auditoria.RegistrarAsync(
+                        result.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS",
+                        "RECLAMO",
+                        req.ReclamoId,
+                        result.ok ? "Cliente notificado por documentos completos." : result.response);
+                }
+
+                await _auditoria.RegistrarAsync(
+                    "WHATSAPP_DOCUMENTO_A_RECLAMO",
+                    "RECLAMO",
+                    req.ReclamoId,
+                    $"Adjunto de WhatsApp guardado como {seleccionado.Documento}: {documento.NombreArchivoOriginal}.");
+
+                var docs = await _reclamos.GetDocumentosAsync(req.ReclamoId);
+                return Ok(new { documento, checklist = docs, completo });
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error guardando media de WhatsApp {MensajeId} en reclamo {ReclamoId}", mensajeId, req.ReclamoId);
+            return StatusCode(502, new { error = "No se pudo guardar el archivo recibido por WhatsApp." });
+        }
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -192,6 +284,56 @@ public class WhatsAppBandejaApiController : ControllerBase
 
     private static string OnlyDigits(string? value)
         => new((value ?? "").Where(char.IsDigit).ToArray());
+
+    private static bool PhoneMatches(string claimPhone, string chatPhone)
+    {
+        if (string.IsNullOrWhiteSpace(claimPhone) || string.IsNullOrWhiteSpace(chatPhone))
+            return false;
+        if (claimPhone == chatPhone)
+            return true;
+        if (claimPhone.Length >= 8 && chatPhone.Length >= 8)
+            return claimPhone[^8..] == chatPhone[^8..];
+        return false;
+    }
+
+    private async Task<DownloadedMetaMedia> DescargarMediaMetaAsync(WhatsAppMensaje msg)
+    {
+        var waConfig = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+        if (!waConfig.Enabled || string.IsNullOrWhiteSpace(waConfig.AccessToken))
+            throw new InvalidOperationException("WhatsApp no esta configurado.");
+
+        var version = string.IsNullOrWhiteSpace(waConfig.GraphVersion) ? "v18.0" : waConfig.GraphVersion;
+        var infoReq = new HttpRequestMessage(HttpMethod.Get, $"https://graph.facebook.com/{version}/{msg.MediaId}");
+        infoReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", waConfig.AccessToken);
+        var infoRes = await _http.SendAsync(infoReq);
+        if (!infoRes.IsSuccessStatusCode)
+            throw new InvalidOperationException("No se pudo obtener el archivo desde Meta.");
+
+        var infoJson = await infoRes.Content.ReadAsStringAsync();
+        string? downloadUrl;
+        string? mimeType;
+        using (var doc = JsonDocument.Parse(infoJson))
+        {
+            downloadUrl = doc.RootElement.TryGetProperty("url", out var u) ? u.GetString() : null;
+            mimeType = doc.RootElement.TryGetProperty("mime_type", out var m) ? m.GetString() : msg.MediaTipoMime;
+        }
+
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            throw new InvalidOperationException("Meta no devolvio URL de descarga.");
+
+        var dlReq = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+        dlReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", waConfig.AccessToken);
+        var dlRes = await _http.SendAsync(dlReq, HttpCompletionOption.ResponseHeadersRead);
+        if (!dlRes.IsSuccessStatusCode)
+            throw new InvalidOperationException("No se pudo descargar el archivo desde Meta.");
+
+        var fileName = string.IsNullOrWhiteSpace(msg.MediaNombre)
+            ? $"whatsapp_{msg.Id}"
+            : msg.MediaNombre;
+        var contentType = mimeType ?? msg.MediaTipoMime ?? "application/octet-stream";
+        var stream = await dlRes.Content.ReadAsStreamAsync();
+        return new DownloadedMetaMedia(stream, fileName, contentType, dlRes.Content.Headers.ContentLength);
+    }
 }
 
 public record RespuestaRequest(string Mensaje);
@@ -199,6 +341,8 @@ public record EstadoRequest(string Estado);
 public record AsociarClienteRequest(int ClienteId);
 public record AsociarReclamoRequest(int? ReclamoId);
 public record AsignarAgenteRequest(int? AgenteId);
+public record GuardarDocumentoWhatsAppRequest(int ReclamoId, int ReclamoDocumentoId);
+public sealed record DownloadedMetaMedia(Stream Stream, string FileName, string ContentType, long? ContentLength);
 public record ReclamoLinkOption(
     int Id,
     string Referencia,

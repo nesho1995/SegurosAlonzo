@@ -64,6 +64,14 @@ export interface ReclamoLinkOption {
   telefonoCoincide: boolean
 }
 
+export interface ClaimPendingDocument {
+  id: number
+  reclamoId: number
+  documento: string
+  recibido: boolean
+  fechaRecibido?: string
+}
+
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: 'include',
@@ -155,6 +163,23 @@ export async function buscarReclamos(params: {
   if (params.buscar) qs.set('buscar', params.buscar)
   if (params.telefono) qs.set('telefono', params.telefono)
   return apiFetch(`/api/whatsapp/bandeja/reclamos?${qs}`)
+}
+
+export async function getDocumentosReclamo(
+  reclamoId: number
+): Promise<{ items: ClaimPendingDocument[]; pendientes: number }> {
+  return apiFetch(`/api/reclamos/${reclamoId}/documentos-pendientes`)
+}
+
+export async function guardarDocumentoMensaje(
+  mensajeId: number,
+  reclamoId: number,
+  reclamoDocumentoId: number
+): Promise<{ checklist: ClaimPendingDocument[]; completo: boolean }> {
+  return apiFetch(`/api/whatsapp/bandeja/mensajes/${mensajeId}/guardar-documento`, {
+    method: 'POST',
+    body: JSON.stringify({ reclamoId, reclamoDocumentoId }),
+  })
 }
 
 export function mediaUrl(mediaId: string, forceDownload = false): string {

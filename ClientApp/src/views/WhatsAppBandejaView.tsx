@@ -5,9 +5,10 @@ import {
 } from 'lucide-react'
 import {
   asignarAgente, asociarReclamo, cambiarEstado,
-  buscarReclamos,
+  buscarReclamos, getDocumentosReclamo, guardarDocumentoMensaje,
   getAgentes, getConversaciones, getMensajes,
   marcarLeido, mediaUrl, responder,
+  type ClaimPendingDocument,
   type AgenteSummary, type ConversacionDetalle,
   type ConversacionListItem, type MensajeDto,
   type ReclamoLinkOption,
@@ -33,13 +34,24 @@ function estadoColor(e: string) {
 
 function ultimoPreview(conv: ConversacionListItem) {
   if (!conv.ultimoMensaje && !conv.ultimoTipoContenido) return null
-  const tipo = conv.ultimoTipoContenido ?? 'texto'
+  const tipo = normalizarTipoContenido(conv.ultimoTipoContenido ?? 'texto')
   if (tipo === 'imagen') return '🖼️ Imagen'
   if (tipo === 'documento') return `📄 ${conv.ultimoMensaje ?? 'Documento'}`
   if (tipo === 'audio') return '🎵 Audio'
   if (tipo === 'video') return '🎥 Video'
   if (tipo === 'sticker') return '😀 Sticker'
   return conv.ultimoMensaje?.slice(0, 60) ?? null
+}
+
+function normalizarTipoContenido(tipo: string | null | undefined) {
+  if (tipo === 'image') return 'imagen'
+  if (tipo === 'document') return 'documento'
+  return tipo ?? 'texto'
+}
+
+function tieneMediaGuardable(msg: MensajeDto) {
+  const tipo = normalizarTipoContenido(msg.tipoContenido)
+  return msg.direccion === 'entrante' && !!msg.mediaId && (tipo === 'imagen' || tipo === 'documento')
 }
 
 function nombreConversacion(conv: {
@@ -78,6 +90,9 @@ export function WhatsAppBandejaView() {
   const [buscandoReclamos, setBuscandoReclamos] = useState(false)
   const [vinculandoReclamo, setVinculandoReclamo] = useState(false)
   const [mostrarVincular, setMostrarVincular] = useState(false)
+  const [documentosReclamo, setDocumentosReclamo] = useState<ClaimPendingDocument[]>([])
+  const [documentoSeleccionadoPorMensaje, setDocumentoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
+  const [guardandoDocumentoId, setGuardandoDocumentoId] = useState<number | null>(null)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatTopRef = useRef<HTMLDivElement>(null)
@@ -114,12 +129,15 @@ export function WhatsAppBandejaView() {
     setMsgError(null)
     setRespuesta('')
     setMostrarVincular(false)
+    setDocumentosReclamo([])
+    setDocumentoSeleccionadoPorMensaje({})
     setOffsetMensajes(0)
     try {
       const { conversacion, items, total: t } = await getMensajes(conv.id, { limit: LIMIT, offset: 0 })
       setConvSeleccionada(conversacion)
       setMensajes(items)
       setTotalMensajes(t)
+      await cargarDocumentosDelReclamo(conversacion.reclamoId)
       if (conv.noLeidos > 0) {
         await marcarLeido(conv.id)
         setConversaciones(prev => prev.map(c => c.id === conv.id ? { ...c, noLeidos: 0 } : c))
@@ -158,10 +176,25 @@ export function WhatsAppBandejaView() {
       setTotalMensajes(t)
       // Actualizar info de la conversación (reclamo/agente pueden haber cambiado)
       setConvSeleccionada(prev => prev ? { ...prev, ...conversacion } : conversacion)
+      await cargarDocumentosDelReclamo(conversacion.reclamoId, true)
     } catch { /* silencioso */ }
   }
 
   // ─── Enviar respuesta ────────────────────────────────────────────────────────
+
+  async function cargarDocumentosDelReclamo(reclamoId: number | null, silencioso = false) {
+    if (!reclamoId) {
+      setDocumentosReclamo([])
+      return
+    }
+    try {
+      const res = await getDocumentosReclamo(reclamoId)
+      setDocumentosReclamo(res.items)
+    } catch (e) {
+      if (!silencioso) setMsgError(e instanceof Error ? e.message : 'Error cargando documentos del reclamo.')
+      setDocumentosReclamo([])
+    }
+  }
 
   async function enviarRespuesta() {
     if (!convSeleccionada || !respuesta.trim()) return
@@ -236,10 +269,35 @@ export function WhatsAppBandejaView() {
       setReclamoInput('')
       setReclamosSugeridos([])
       setMostrarVincular(false)
+      setDocumentoSeleccionadoPorMensaje({})
+      await cargarDocumentosDelReclamo(conversacion.reclamoId)
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error vinculando reclamo.')
     } finally {
       setVinculandoReclamo(false)
+    }
+  }
+
+  async function guardarAdjuntoEnReclamo(msg: MensajeDto) {
+    if (!convSeleccionada?.reclamoId) {
+      setMsgError('Vincula un reclamo antes de guardar el adjunto.')
+      return
+    }
+    const documentoId = documentoSeleccionadoPorMensaje[msg.id]
+    if (!documentoId) {
+      setMsgError('Selecciona que documento del checklist corresponde al adjunto.')
+      return
+    }
+
+    setGuardandoDocumentoId(msg.id)
+    setMsgError(null)
+    try {
+      const res = await guardarDocumentoMensaje(msg.id, convSeleccionada.reclamoId, documentoId)
+      setDocumentosReclamo(res.checklist)
+    } catch (e) {
+      setMsgError(e instanceof Error ? e.message : 'Error guardando documento.')
+    } finally {
+      setGuardandoDocumentoId(null)
     }
   }
 
@@ -418,6 +476,7 @@ export function WhatsAppBandejaView() {
 
                 {/* Reclamo vinculado */}
                 {convSeleccionada.reclamoId ? (
+                  <>
                   <span style={{
                     fontSize: 11, background: '#f0fdf4', color: '#16a34a',
                     borderRadius: 4, padding: '2px 7px', display: 'flex', alignItems: 'center', gap: 3,
@@ -434,6 +493,19 @@ export function WhatsAppBandejaView() {
                       <Unlink size={9} style={{ color: '#94a3b8' }} />
                     </button>
                   </span>
+                  <button onClick={() => {
+                    const next = !mostrarVincular
+                    setMostrarVincular(next)
+                    if (next) void cargarReclamosSugeridos('')
+                  }}
+                    style={{
+                      fontSize: 11, background: '#f8fafc', color: '#64748b',
+                      border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 7px',
+                      cursor: 'pointer',
+                  }}>
+                    Cambiar reclamo
+                  </button>
+                  </>
                 ) : (
                   <button onClick={() => {
                     const next = !mostrarVincular
@@ -541,7 +613,16 @@ export function WhatsAppBandejaView() {
               {!cargandoMensajes && mensajes.length === 0 && (
                 <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 20 }}>Sin mensajes aún</div>
               )}
-              {mensajes.map(msg => <BurbujaMensaje key={msg.id} msg={msg} />)}
+              {mensajes.map(msg => <BurbujaMensaje
+                key={msg.id}
+                msg={msg}
+                reclamoId={convSeleccionada.reclamoId}
+                documentos={documentosReclamo}
+                documentoSeleccionado={documentoSeleccionadoPorMensaje[msg.id] ?? ''}
+                guardando={guardandoDocumentoId === msg.id}
+                onSeleccionarDocumento={(documentoId) => setDocumentoSeleccionadoPorMensaje(prev => ({ ...prev, [msg.id]: documentoId }))}
+                onGuardar={() => guardarAdjuntoEnReclamo(msg)}
+              />)}
               <div ref={chatEndRef} />
             </div>
 
@@ -656,9 +737,26 @@ function ConvItem({ conv, selected, onClick }: {
 
 // ─── Burbuja de mensaje ───────────────────────────────────────────────────────
 
-function BurbujaMensaje({ msg }: { msg: MensajeDto }) {
+function BurbujaMensaje({
+  msg,
+  reclamoId,
+  documentos,
+  documentoSeleccionado,
+  guardando,
+  onSeleccionarDocumento,
+  onGuardar,
+}: {
+  msg: MensajeDto
+  reclamoId: number | null
+  documentos: ClaimPendingDocument[]
+  documentoSeleccionado: number | ''
+  guardando: boolean
+  onSeleccionarDocumento: (documentoId: number) => void
+  onGuardar: () => void
+}) {
   const esSaliente = msg.direccion === 'saliente'
-  const tipo = msg.tipoContenido
+  const tipo = normalizarTipoContenido(msg.tipoContenido)
+  const mediaGuardable = tieneMediaGuardable(msg)
 
   return (
     <div style={{ display: 'flex', justifyContent: esSaliente ? 'flex-end' : 'flex-start' }}>
@@ -704,7 +802,7 @@ function BurbujaMensaje({ msg }: { msg: MensajeDto }) {
         )}
 
         {/* Documento */}
-        {tipo === 'document' || (tipo === 'documento' && msg.mediaId) ? (
+        {tipo === 'documento' && msg.mediaId ? (
           <a href={mediaUrl(msg.mediaId!, true)} target="_blank" rel="noopener noreferrer"
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
@@ -716,6 +814,48 @@ function BurbujaMensaje({ msg }: { msg: MensajeDto }) {
             <span style={{ wordBreak: 'break-word' }}>{msg.mediaNombre ?? 'Descargar documento'}</span>
           </a>
         ) : null}
+
+        {mediaGuardable && (
+          <div style={{
+            display: 'grid', gap: 5, marginTop: 7, paddingTop: 7,
+            borderTop: '1px solid #e2e8f0',
+          }}>
+            {reclamoId ? (
+              <>
+                <select
+                  value={documentoSeleccionado}
+                  onChange={e => onSeleccionarDocumento(Number(e.target.value))}
+                  style={{
+                    width: '100%', border: '1px solid #cbd5e1', borderRadius: 6,
+                    padding: '5px 7px', fontSize: 12, background: '#fff',
+                  }}>
+                  <option value="">Asociar a documento...</option>
+                  {documentos.map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.recibido ? 'Recibido - ' : ''}{doc.documento}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={onGuardar}
+                  disabled={guardando || !documentoSeleccionado}
+                  style={{
+                    border: 'none', borderRadius: 6,
+                    background: guardando || !documentoSeleccionado ? '#e2e8f0' : '#0f766e',
+                    color: guardando || !documentoSeleccionado ? '#64748b' : '#fff',
+                    padding: '6px 8px', fontSize: 12, fontWeight: 600,
+                    cursor: guardando || !documentoSeleccionado ? 'not-allowed' : 'pointer',
+                  }}>
+                  {guardando ? 'Guardando...' : 'Guardar en reclamo y marcar check'}
+                </button>
+              </>
+            ) : (
+              <span style={{ color: '#64748b', fontSize: 12 }}>
+                Vincula un reclamo para guardar este adjunto.
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Sticker */}
         {tipo === 'sticker' && msg.mediaId && (

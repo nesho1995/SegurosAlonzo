@@ -111,6 +111,90 @@ public class DocumentoStorageService
         return items.First(x => x.Id == id);
     }
 
+    public async Task<DocumentoDto> GuardarDesdeStreamAsync(
+        Stream archivo,
+        string nombreArchivo,
+        string? contentType,
+        long? tamanoBytes,
+        string entidadTipo,
+        int entidadId,
+        string tipoDocumento,
+        int? usuarioId)
+    {
+        entidadTipo = NormalizarEntidad(entidadTipo);
+        if (!EntidadesPermitidas.Contains(entidadTipo))
+            throw new InvalidOperationException("El tipo de entidad no es valido.");
+        if (entidadId <= 0)
+            throw new InvalidOperationException("Selecciona una entidad valida.");
+        if (archivo is null || !archivo.CanRead)
+            throw new InvalidOperationException("El archivo no esta disponible.");
+
+        var nombreOriginal = CleanOriginalFileName(nombreArchivo);
+        var mimeType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType.Trim();
+        var extension = Path.GetExtension(nombreOriginal).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = ExtensionFromMime(mimeType);
+            nombreOriginal = $"{Path.GetFileNameWithoutExtension(nombreOriginal)}{extension}";
+        }
+
+        var configuredMax = MaxFileBytesFromConfig();
+        if (tamanoBytes.HasValue && tamanoBytes.Value > configuredMax)
+            throw new InvalidOperationException($"El archivo supera el limite permitido de {configuredMax / (1024 * 1024)} MB.");
+        if (!GetAllowedExtensions().Contains(extension))
+            throw new InvalidOperationException("Solo se permiten archivos PDF, JPG, JPEG, PNG, WEBP, TXT, DOC, DOCX, XLS y XLSX.");
+        if (!MimeLooksValid(extension, mimeType))
+            throw new InvalidOperationException("El tipo de archivo no coincide con la extension.");
+
+        var tipo = string.IsNullOrWhiteSpace(tipoDocumento) ? "OTRO" : tipoDocumento.Trim().ToUpperInvariant();
+        var baseFolder = CleanRelativeRoot(_configuration["Documentos:CarpetaBase"] ?? "storage");
+        var folderEntidad = CarpetasPorEntidad[entidadTipo];
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var token = Guid.NewGuid().ToString("N");
+        var nombreLimpio = SafeFileName(Path.GetFileNameWithoutExtension(nombreOriginal));
+        var nombreGuardado = $"{stamp}_{token}_{nombreLimpio}{extension}";
+        var relativeFolder = Path.Combine(baseFolder, folderEntidad, entidadId.ToString());
+        var absoluteFolder = Path.Combine(_environment.ContentRootPath, relativeFolder);
+        EnsureInsideContentRoot(absoluteFolder);
+        Directory.CreateDirectory(absoluteFolder);
+
+        var absolutePath = Path.Combine(absoluteFolder, nombreGuardado);
+        EnsureInsideContentRoot(absolutePath);
+        var bytesWritten = await CopyToNewFileWithLimitAsync(archivo, absolutePath, configuredMax);
+        if (bytesWritten == 0)
+        {
+            File.Delete(absolutePath);
+            throw new InvalidOperationException("Selecciona un archivo.");
+        }
+
+        var hash = ComputeSha256(absolutePath);
+        var rutaRelativa = Path.Combine(relativeFolder, nombreGuardado).Replace("\\", "/");
+
+        var id = await _documentos.InsertAsync(new Documento
+        {
+            EntidadTipo = entidadTipo,
+            EntidadId = entidadId,
+            NombreArchivoOriginal = nombreOriginal,
+            NombreArchivoGuardado = nombreGuardado,
+            RutaRelativa = rutaRelativa,
+            TipoDocumento = tipo,
+            SubidoPorUsuarioId = usuarioId,
+            TamanoBytes = bytesWritten,
+            MimeType = mimeType,
+            HashArchivo = hash,
+            Extension = extension.TrimStart('.')
+        });
+
+        await _auditoria.RegistrarAsync(
+            "SUBIR_DOCUMENTO",
+            entidadTipo,
+            entidadId,
+            $"Documento subido: {nombreOriginal}");
+
+        var items = await _documentos.GetByEntidadAsync(entidadTipo, entidadId);
+        return items.First(x => x.Id == id);
+    }
+
     public async Task<(Documento documento, string absolutePath)> PrepararDescargaAsync(int id)
     {
         var documento = await _documentos.GetByIdAsync(id)
@@ -255,5 +339,44 @@ public class DocumentoStorageService
             .Select(x => x.StartsWith('.') ? x.ToLowerInvariant() : $".{x.ToLowerInvariant()}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return parsed.Count == 0 ? ExtensionesPermitidasDefault : parsed;
+    }
+
+    private static string ExtensionFromMime(string contentType)
+    {
+        return contentType.ToLowerInvariant() switch
+        {
+            "application/pdf" => ".pdf",
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "text/plain" => ".txt",
+            "application/msword" => ".doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+            "application/vnd.ms-excel" => ".xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+            _ => ".bin"
+        };
+    }
+
+    private static async Task<long> CopyToNewFileWithLimitAsync(Stream source, string absolutePath, long maxBytes)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        await using var target = new FileStream(absolutePath, FileMode.CreateNew);
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer);
+            if (read == 0)
+                break;
+            total += read;
+            if (total > maxBytes)
+            {
+                target.Close();
+                File.Delete(absolutePath);
+                throw new InvalidOperationException($"El archivo supera el limite permitido de {maxBytes / (1024 * 1024)} MB.");
+            }
+            await target.WriteAsync(buffer.AsMemory(0, read));
+        }
+        return total;
     }
 }
