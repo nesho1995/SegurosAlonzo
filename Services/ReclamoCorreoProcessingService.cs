@@ -71,7 +71,7 @@ public class ReclamoCorreoProcessingService
                     if (await _repo.ExistsByMessageIdAsync(email.MessageId))
                     {
                         estado.CorreosDuplicados++;
-                        await RegistrarDetalleAsync(estado, email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId.");
+                        estado.Detalles.Add(Detalle(email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId."));
                         continue;
                     }
 

@@ -203,7 +203,7 @@ public class WhatsAppService
                     new
                     {
                         type = "body",
-                        parameters = templateParameters.Select(x => new { type = "text", text = x ?? "" }).ToArray()
+                        parameters = templateParameters.Select(x => new { type = "text", text = SanitizeTemplateParameter(x) }).ToArray()
                     }
                 }
             }
@@ -277,14 +277,7 @@ public class WhatsAppService
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
         var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
-        var documentos = @"1. Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente.
-2. Certificacion de Transito.
-3. Tarjeta de identidad del conductor, ambos lados.
-4. Licencia del conductor, ambos lados.
-5. Boleta de circulacion del vehiculo asegurado.
-6. Inspeccion puntual de danos en Seguros Crefisa.
-7. Dos cotizaciones de talleres de la red, cuando aplique.
-8. Estar al dia con el pago de primas del seguro.";
+        var documentos = "Aviso de accidente original firmado, Certificacion de Transito, identidad y licencia del conductor, boleta de circulacion, inspeccion puntual de danos, cotizaciones de talleres cuando aplique y estar al dia con primas.";
 
         var talleres = await BuildTalleresBlockAsync(r);
         var mensaje = r.MensajeWhatsApp ?? $@"Buenas tardes, {nombre}.
@@ -441,7 +434,7 @@ Atentamente.".Trim();
 
     private static IEnumerable<string> SplitTemplateParameter(string? value, int maxLength)
     {
-        var text = (value ?? "").Trim();
+        var text = SanitizeTemplateParameter(value);
         if (text.Length <= maxLength)
         {
             yield return text;
@@ -465,6 +458,24 @@ Atentamente.".Trim();
 
         if (!string.IsNullOrWhiteSpace(remaining))
             yield return remaining;
+    }
+
+    private static string SanitizeTemplateParameter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var text = value
+            .Replace("\r\n", " ")
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace('\t', ' ')
+            .Trim();
+
+        while (text.Contains("     ", StringComparison.Ordinal))
+            text = text.Replace("     ", "    ", StringComparison.Ordinal);
+
+        return text;
     }
 
     private async Task SaveOutgoingMessageAsync(string normalizedPhone, string mensaje, string metaResponse, int? usuarioId)

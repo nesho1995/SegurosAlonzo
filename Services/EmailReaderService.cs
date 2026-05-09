@@ -64,12 +64,9 @@ public class EmailReaderService
         var desde = DateTime.UtcNow.AddHours(-lookbackHours);
         _logger.LogInformation("Buscando correos no leidos desde hace {Hours} horas (UTC: {DesdeUtc})", lookbackHours, desde);
 
-        var uids = await folder.SearchAsync(
-            SearchQuery.DeliveredAfter(desde)
-                .And(SearchQuery.NotSeen)
-        );
+        var uids = await folder.SearchAsync(SearchQuery.DeliveredAfter(desde));
 
-        _logger.LogInformation("Correos no leidos encontrados en ultimas {Hours} horas: {Count}", lookbackHours, uids.Count);
+        _logger.LogInformation("Correos recientes encontrados en ultimas {Hours} horas: {Count}", lookbackHours, uids.Count);
 
         foreach (var uid in uids)
         {

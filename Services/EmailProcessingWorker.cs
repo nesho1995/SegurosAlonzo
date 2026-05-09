@@ -45,10 +45,20 @@ public class EmailProcessingWorker : BackgroundService
             }
             catch (Exception ex)
             {
+                if (stoppingToken.IsCancellationRequested && ex is OperationCanceledException)
+                    break;
+
                 _logger.LogError(ex, "Error general procesando correos y recordatorios. Se reintentara en {IntervalSeconds}s.", interval);
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(interval), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 
