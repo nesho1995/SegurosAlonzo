@@ -137,7 +137,7 @@ export function ReclamosView() {
   }
 
   return (
-    <>
+    <div className="reclamos-page">
       <PageHeader eyebrow="Reclamos" title="Expedientes de reclamos" description="Consulta reclamos y adjunta documentos de respaldo sin tocar el flujo probado de WhatsApp." onRefresh={load} />
       <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'PENDIENTE', 'PENDIENTE_ENVIO', 'ENVIADO', 'ERROR', 'COMPLETO', 'EN_SEGUIMIENTO', 'DOCUMENTOS_PENDIENTES']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
       {loading && <LoadingCard text="Cargando reclamos..." />}
@@ -231,6 +231,6 @@ export function ReclamosView() {
           </article>
         </section>
       )}
-    </>
+    </div>
   )
 }

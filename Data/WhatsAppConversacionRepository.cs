@@ -70,6 +70,7 @@ public class WhatsAppConversacionRepository
             VALUES (@telefono, @nombre, NOW())
             ON DUPLICATE KEY UPDATE
                 nombre_contacto  = COALESCE(@nombre, nombre_contacto),
+                estado           = 'abierta',
                 ultima_actividad = NOW()",
             new { telefono, nombre });
 
@@ -249,6 +250,7 @@ public class WhatsAppConversacionRepository
             await cn.ExecuteAsync(@"
                 UPDATE whatsapp_conversaciones
                 SET ultima_actividad = NOW(),
+                    estado = 'abierta',
                     no_leidos = no_leidos + 1
                 WHERE id = @id",
                 new { id = msg.ConversacionId });

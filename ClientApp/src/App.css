@@ -398,8 +398,20 @@
   gap: 18px;
 }
 
+.reclamos-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
 .claims-layout > .panel {
   width: 100%;
+  overflow: visible;
 }
 
 .panel {
