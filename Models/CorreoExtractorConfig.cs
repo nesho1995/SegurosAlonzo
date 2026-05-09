@@ -6,7 +6,7 @@ public class CorreoExtractorConfig
 {
     [Required]
     public string SubjectPattern { get; set; } =
-        @"(?<placa>[A-Z]{2,4}-?[0-9]{3,4})\s*,\s*(?<reclamo>[A-Z]{2,5}-[0-9]{2,5}-[0-9]{4})";
+        @"(?<placa>[A-Z]{2,4}-?[0-9]{3,4})\s*,?\s+(?<reclamo>[A-Z]{2,5}-[0-9]{2,5}-[0-9]{4})";
 
     [Required]
     public string AseguradoPattern { get; set; } = @"Asegurado\s*:\s*(.+)";
@@ -31,7 +31,7 @@ public class CorreoExtractorConfig
 
     public static IReadOnlyDictionary<string, string> DefaultValues => new Dictionary<string, string>
     {
-        [nameof(SubjectPattern)] = @"(?<placa>[A-Z]{2,4}-?[0-9]{3,4})\s*,\s*(?<reclamo>[A-Z]{2,5}-[0-9]{2,5}-[0-9]{4})",
+        [nameof(SubjectPattern)] = @"(?<placa>[A-Z]{2,4}-?[0-9]{3,4})\s*,?\s+(?<reclamo>[A-Z]{2,5}-[0-9]{2,5}-[0-9]{4})",
         [nameof(AseguradoPattern)] = @"Asegurado\s*:\s*(.+)",
         [nameof(PolizaPattern)] = @"(?:No\.\s*)?P[oó]liza\s*:\s*(.+)",
         [nameof(CaracteristicasPattern)] = @"(?:Caracter[ií]sticas del Bien asegurado|Veh[ií]culo|Vehiculo)\s*:\s*(.+)",

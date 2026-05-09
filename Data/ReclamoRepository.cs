@@ -75,6 +75,31 @@ public class ReclamoRepository
         return await cn.ExecuteScalarAsync<int>(sql, new { messageId }) > 0;
     }
 
+    public async Task<bool> ExistsByClaimReferenceAsync(string? reclamo, string? placa)
+    {
+        if (string.IsNullOrWhiteSpace(reclamo))
+            return false;
+
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT COUNT(1)
+            FROM reclamos_whatsapp
+            WHERE UPPER(COALESCE(reclamo, numero_reclamo, '')) = UPPER(@reclamo)
+              AND (
+                    @placa IS NULL
+                    OR @placa = ''
+                    OR UPPER(COALESCE(placa, '')) = UPPER(@placa)
+                  );";
+
+        return await cn.ExecuteScalarAsync<int>(sql, new
+        {
+            reclamo = reclamo.Trim(),
+            placa = placa?.Trim() ?? ""
+        }) > 0;
+    }
+
     public async Task<int> InsertAsync(ReclamoWhatsApp r)
     {
         await EnsureSchemaAsync();

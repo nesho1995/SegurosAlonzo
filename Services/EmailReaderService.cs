@@ -62,7 +62,7 @@ public class EmailReaderService
         var lookbackHours = lookbackHoursOverride ?? runtime.LookbackHours;
         lookbackHours = Math.Clamp(lookbackHours, 1, 24 * 30);
         var desde = DateTime.UtcNow.AddHours(-lookbackHours);
-        _logger.LogInformation("Buscando correos no leidos desde hace {Hours} horas (UTC: {DesdeUtc})", lookbackHours, desde);
+        _logger.LogInformation("Buscando correos recientes desde hace {Hours} horas (UTC: {DesdeUtc})", lookbackHours, desde);
 
         var uids = await folder.SearchAsync(SearchQuery.DeliveredAfter(desde));
 

@@ -82,6 +82,13 @@ public class ReclamoCorreoProcessingService
                         Cuerpo = email.Body
                     }, guardarTallerDetectado: true);
 
+                    if (await _repo.ExistsByClaimReferenceAsync(reclamo.Reclamo ?? reclamo.NumeroReclamo, reclamo.Placa))
+                    {
+                        estado.CorreosDuplicados++;
+                        await RegistrarDetalleAsync(estado, email, "DUPLICADO", "Ya existe un reclamo con el mismo numero de reclamo y placa.");
+                        continue;
+                    }
+
                     if (string.IsNullOrWhiteSpace(reclamo.Conductor))
                         reclamo.Conductor = string.IsNullOrWhiteSpace(reclamo.Asegurado) ? "Cliente" : reclamo.Asegurado;
 
