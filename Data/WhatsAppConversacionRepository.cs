@@ -58,6 +58,8 @@ public class WhatsAppConversacionRepository
                 CONSTRAINT fk_wa_msg_conv FOREIGN KEY (conversacion_id)
                     REFERENCES whatsapp_conversaciones(id) ON DELETE CASCADE
             )");
+
+        await LimpiarReclamosRotosAsync();
     }
 
     // ─── Conversaciones ───────────────────────────────────────────────────────
@@ -110,7 +112,7 @@ public class WhatsAppConversacionRepository
                 c.nombre_contacto   NombreContacto,
                 c.cliente_id        ClienteId,
                 cl.nombre           NombreCliente,
-                c.reclamo_id        ReclamoId,
+                CASE WHEN r.id IS NULL THEN NULL ELSE c.reclamo_id END ReclamoId,
                 r.numero_reclamo    NumeroReclamo,
                 c.agente_asignado_id AgenteAsignadoId,
                 u.Username          AgenteNombre,
@@ -171,7 +173,7 @@ public class WhatsAppConversacionRepository
                 c.nombre_contacto   NombreContacto,
                 c.cliente_id        ClienteId,
                 cl.nombre           NombreCliente,
-                c.reclamo_id        ReclamoId,
+                CASE WHEN r.id IS NULL THEN NULL ELSE c.reclamo_id END ReclamoId,
                 r.numero_reclamo    NumeroReclamo,
                 r.conductor         ConductorReclamo,
                 c.agente_asignado_id AgenteAsignadoId,
@@ -216,8 +218,26 @@ public class WhatsAppConversacionRepository
     {
         using var cn = _factory.CreateConnection();
         await cn.ExecuteAsync(
-            "UPDATE whatsapp_conversaciones SET reclamo_id = @reclamoId WHERE id = @id",
+            @"
+            UPDATE whatsapp_conversaciones
+            SET reclamo_id = CASE
+                WHEN @reclamoId IS NULL THEN NULL
+                WHEN EXISTS (SELECT 1 FROM reclamos_whatsapp WHERE id = @reclamoId) THEN @reclamoId
+                ELSE NULL
+            END
+            WHERE id = @id",
             new { reclamoId, id = conversacionId });
+    }
+
+    public async Task<int> LimpiarReclamosRotosAsync()
+    {
+        using var cn = _factory.CreateConnection();
+        return await cn.ExecuteAsync(@"
+            UPDATE whatsapp_conversaciones c
+            LEFT JOIN reclamos_whatsapp r ON r.id = c.reclamo_id
+            SET c.reclamo_id = NULL
+            WHERE c.reclamo_id IS NOT NULL
+              AND r.id IS NULL");
     }
 
     public async Task AsignarAgenteAsync(int conversacionId, int? agenteId)
