@@ -36,3 +36,27 @@ export type CarteraImportPreview = {
   warningCount: number
   hasCriticalErrors: boolean
 }
+
+export type ReclamoHistoricoImportRow = {
+  rowNumber: number
+  conductor: string
+  cliente: string
+  poliza: string
+  reclamo: string
+  vehiculo: string
+  placa: string
+  fechaNotificacion?: string
+  duplicado: boolean
+  documentosRecibidos: Record<string, boolean>
+  errors: ImportIssue[]
+  warnings: ImportIssue[]
+}
+
+export type ReclamoHistoricoImportPreview = {
+  rows: ReclamoHistoricoImportRow[]
+  totalRows: number
+  errorCount: number
+  warningCount: number
+  importableCount: number
+  duplicateCount: number
+}

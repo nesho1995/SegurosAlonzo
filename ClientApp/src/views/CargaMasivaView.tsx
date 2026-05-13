@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { ChevronDown, Download, FileSpreadsheet, Maximize2, Search, Upload, X } from 'lucide-react'
-import { descargarExcelLimpioCartera, descargarReporteCartera, importarCartera, importarTalleres, previewCartera, previewTalleres } from '../api/cargaMasivaApi'
+import { descargarExcelLimpioCartera, descargarReporteCartera, importarCartera, importarReclamos, importarTalleres, previewCartera, previewReclamos, previewTalleres } from '../api/cargaMasivaApi'
 import { StatusPill } from '../components/Badge'
 import { DataTable } from '../components/DataTable'
 import { ErrorCard } from '../components/ErrorAlert'
 import { Info, PanelTitle } from '../components/FormControls'
 import { PageHeader } from '../components/Topbar'
 import type { WorkshopImportRow } from '../types/talleres'
-import type { CarteraImportPreview } from '../types/cargaMasiva'
+import type { CarteraImportPreview, ReclamoHistoricoImportPreview } from '../types/cargaMasiva'
 import { validateExcelFile } from '../utils/validators'
 
 export function BulkHelpView() {
@@ -16,6 +16,8 @@ export function BulkHelpView() {
   const [expandedPreview, setExpandedPreview] = useState(false)
   const [talleresFile, setTalleresFile] = useState<File | null>(null)
   const [talleresPreview, setTalleresPreview] = useState<WorkshopImportRow[]>([])
+  const [reclamosFile, setReclamosFile] = useState<File | null>(null)
+  const [reclamosPreview, setReclamosPreview] = useState<ReclamoHistoricoImportPreview | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const hasPreviewErrors = talleresPreview.some((row) => row.errores.length > 0)
@@ -23,6 +25,7 @@ export function BulkHelpView() {
   const importableRows = carteraPreview?.rows.filter((r) => r.errors.length === 0).length ?? 0
   const rejectedRows   = carteraPreview?.rows.filter((r) => r.errors.length > 0).length ?? 0
   const carteraRows    = carteraPreview?.rows.slice(0, 60) ?? []
+  const reclamosRows   = reclamosPreview?.rows.slice(0, 80) ?? []
 
   async function previewCarteraFile() {
     const v = validateExcelFile(carteraFile); if (v) { setError(v); return }
@@ -56,6 +59,26 @@ export function BulkHelpView() {
     if (hasPreviewErrors) { setError('Hay filas con errores. Corrígelas antes de importar.'); return }
     try { const d = await importarTalleres(talleresFile); setMessage(`Importados: ${d.importados}. Rechazados: ${d.rechazados}.`); setError(null) }
     catch (err) { setError(err instanceof Error ? err.message : 'Error inesperado.') }
+  }
+
+  async function previewReclamosFile() {
+    const v = validateExcelFile(reclamosFile); if (v) { setError(v); return }
+    if (!reclamosFile) return
+    try { setReclamosPreview(await previewReclamos(reclamosFile)); setError(null) }
+    catch (err) { setError(err instanceof Error ? err.message : 'Error inesperado.') }
+  }
+
+  async function importReclamosFile() {
+    const v = validateExcelFile(reclamosFile); if (v) { setError(v); return }
+    if (!reclamosFile) return
+    if (!reclamosPreview) { setError('Primero genera el preview.'); return }
+    if (reclamosPreview.importableCount === 0) { setError('No hay reclamos importables en el archivo.'); return }
+    try {
+      const d = await importarReclamos(reclamosFile)
+      setMessage(`Reclamos importados: ${d.importados}. Duplicados: ${d.duplicados}. Rechazados: ${d.rechazados}.`)
+      setError(null)
+      setReclamosPreview(null)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Error inesperado.') }
   }
 
   async function downloadCarteraBlob(fileName: string, getter: (f: File) => Promise<Blob>) {
@@ -128,6 +151,30 @@ export function BulkHelpView() {
             </div>
           )}
           <CarteraPreviewTable rows={carteraRows} />
+        </div>
+      </details>
+
+      <details className="accordion-section">
+        <summary>
+          <span>
+            <strong>Cargar reclamos activos</strong>
+            <small>{reclamosPreview ? `${reclamosPreview.importableCount} importables · ${reclamosPreview.duplicateCount} duplicados · ${reclamosPreview.errorCount} errores` : reclamosFile ? reclamosFile.name : 'Formato CREFISA / Prestadito de reclamos historicos'}</small>
+          </span>
+          <span className="accordion-actions"><ChevronDown size={18} /></span>
+        </summary>
+        <div className="accordion-body">
+          <div className="bulk-file-row" style={{ padding: '8px 0 12px' }}>
+            <label className="bulk-file-btn">
+              <FileSpreadsheet size={16} />
+              <span>Seleccionar archivo</span>
+              <input type="file" accept=".xlsx" onChange={(e) => { setReclamosFile(e.target.files?.[0] || null); setReclamosPreview(null); setMessage(null); setError(null) }} />
+            </label>
+            {reclamosFile && <span className="bulk-file-name">{reclamosFile.name}</span>}
+            <button className="icon-button secondary" onClick={previewReclamosFile} disabled={!reclamosFile}><Search size={16} />Preview</button>
+            <button className="primary-button" onClick={importReclamosFile} disabled={!reclamosPreview || reclamosPreview.importableCount === 0}><Upload size={16} />Importar ({reclamosPreview?.importableCount ?? 0})</button>
+          </div>
+          {reclamosPreview && <div className={reclamosPreview.errorCount > 0 ? 'inline-alert warning' : 'inline-alert success'} style={{ marginBottom: 8 }}>{reclamosPreview.totalRows} filas · {reclamosPreview.importableCount} importables · {reclamosPreview.duplicateCount} duplicados · {reclamosPreview.errorCount} errores</div>}
+          <ReclamosPreviewTable rows={reclamosRows} />
         </div>
       </details>
 
@@ -219,6 +266,35 @@ function CarteraPreviewTable({ rows, expanded = false }: { rows: CarteraImportPr
               : <span className="muted-text">—</span>,
             <IssueList issues={row.errors} empty="—" />,
             <IssueList issues={row.warnings} empty="—" />,
+          ]
+        })}
+      />
+    </div>
+  )
+}
+
+function ReclamosPreviewTable({ rows }: { rows: ReclamoHistoricoImportPreview['rows'] }) {
+  if (rows.length === 0)
+    return <div className="preview-table"><div className="empty-state">Sin filas. Selecciona un archivo y genera el preview.</div></div>
+
+  return (
+    <div className="preview-table">
+      <DataTable
+        headers={['Fila', 'Estado', 'Conductor', 'Poliza', 'Reclamo', 'Vehiculo', 'Documentos', 'Alertas']}
+        rows={rows.map((row) => {
+          const docs = Object.entries(row.documentosRecibidos).filter(([, ok]) => ok).map(([name]) => name)
+          return [
+            row.rowNumber,
+            row.errors.length > 0 ? <StatusPill text="Error" tone="danger" /> : row.duplicado ? <StatusPill text="Duplicado" tone="warning" /> : <StatusPill text="Importable" tone="success" />,
+            <Cell top={row.conductor || 'Sin conductor'} bot={row.cliente} />,
+            row.poliza || <span className="muted-text">—</span>,
+            row.reclamo || <span className="muted-text">Sin reclamo</span>,
+            <Cell top={row.vehiculo || '—'} bot={row.placa} />,
+            docs.length ? docs.join(', ') : <span className="muted-text">Pendientes</span>,
+            <>
+              <IssueList issues={row.errors} empty="" />
+              <IssueList issues={row.warnings} empty="" />
+            </>,
           ]
         })}
       />

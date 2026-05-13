@@ -14,15 +14,18 @@ public class CargaMasivaApiController : ControllerBase
 {
     private readonly PlantillaCargaService _plantillas;
     private readonly CarteraImportService _carteraImport;
+    private readonly ReclamoHistoricoImportService _reclamosImport;
     private readonly AuditoriaService _auditoria;
 
     public CargaMasivaApiController(
         PlantillaCargaService plantillas,
         CarteraImportService carteraImport,
+        ReclamoHistoricoImportService reclamosImport,
         AuditoriaService auditoria)
     {
         _plantillas = plantillas;
         _carteraImport = carteraImport;
+        _reclamosImport = reclamosImport;
         _auditoria = auditoria;
     }
 
@@ -118,6 +121,40 @@ public class CargaMasivaApiController : ControllerBase
             _carteraImport.CrearExcelLimpio(preview),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "cartera_limpia.xlsx");
+    }
+
+    [HttpPost("reclamos/preview")]
+    public async Task<IActionResult> PreviewReclamos([FromForm] IFormFile archivo)
+    {
+        var validation = ValidateExcel(archivo);
+        if (validation is not null)
+            return BadRequest(new { error = validation });
+
+        using var stream = archivo.OpenReadStream();
+        var preview = await _reclamosImport.PreviewAsync(stream);
+        await _auditoria.RegistrarAsync(
+            "PREVIEW_RECLAMOS_HISTORICOS",
+            "CARGA_MASIVA",
+            null,
+            $"Preview reclamos historicos {archivo.FileName}: filas {preview.TotalRows}, importables {preview.ImportableCount}, duplicados {preview.DuplicateCount}, errores {preview.ErrorCount}.");
+        return Ok(preview);
+    }
+
+    [HttpPost("reclamos/importar")]
+    public async Task<IActionResult> ImportarReclamos([FromForm] IFormFile archivo)
+    {
+        var validation = ValidateExcel(archivo);
+        if (validation is not null)
+            return BadRequest(new { error = validation });
+
+        using var stream = archivo.OpenReadStream();
+        var result = await _reclamosImport.ImportAsync(stream);
+        await _auditoria.RegistrarAsync(
+            "IMPORTAR_RECLAMOS_HISTORICOS",
+            "CARGA_MASIVA",
+            null,
+            $"Reclamos historicos {archivo.FileName}: importados {result.Importados}, duplicados {result.Duplicados}, rechazados {result.Rechazados}.");
+        return Ok(result);
     }
 
     private static string? ValidateExcel(IFormFile? archivo)

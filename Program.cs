@@ -155,6 +155,7 @@ builder.Services.AddScoped<PhoneNormalizationService>();
 builder.Services.AddScoped<CarteraImportService>();
 builder.Services.AddScoped<PolizaImportRulesService>();
 builder.Services.AddScoped<TallerImportService>();
+builder.Services.AddScoped<ReclamoHistoricoImportService>();
 builder.Services.AddScoped<PlantillaCargaService>();
 builder.Services.AddScoped<ReclamoExtractorService>();
 builder.Services.AddScoped<ExtractorConfigurableService>();

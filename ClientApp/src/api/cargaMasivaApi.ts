@@ -1,10 +1,12 @@
 import { uploadJson } from './http'
 import type { WorkshopImportRow } from '../types/talleres'
-import type { CarteraImportPreview } from '../types/cargaMasiva'
+import type { CarteraImportPreview, ReclamoHistoricoImportPreview } from '../types/cargaMasiva'
 export function previewTalleres(file: File) { return uploadJson<{ items: WorkshopImportRow[] }>('/api/talleres/preview', file) }
 export function importarTalleres(file: File) { return uploadJson<{ importados: number; rechazados: number }>('/api/talleres/importar', file) }
 export function previewCartera(file: File) { return uploadJson<CarteraImportPreview>('/api/carga-masiva/cartera/preview', file) }
 export function importarCartera(file: File) { return uploadJson<{ clientes: number; polizas: number; polizasDuplicadas: number; filasImportadas: number; filasRechazadas: number; advertencias: number }>('/api/carga-masiva/cartera/importar', file) }
+export function previewReclamos(file: File) { return uploadJson<ReclamoHistoricoImportPreview>('/api/carga-masiva/reclamos/preview', file) }
+export function importarReclamos(file: File) { return uploadJson<{ importados: number; duplicados: number; rechazados: number }>('/api/carga-masiva/reclamos/importar', file) }
 export async function descargarReporteCartera(file: File) {
   return downloadCarteraFile('/api/carga-masiva/cartera/reporte', file)
 }
