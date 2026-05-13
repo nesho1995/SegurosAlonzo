@@ -444,7 +444,7 @@ Atentamente.".Trim();
             "Tarjeta de identidad del conductor, ambos lados.",
             "Licencia del conductor, ambos lados.",
             "Boleta de circulacion del vehiculo asegurado.",
-            "Inspeccion puntual de danos, solo si la aseguradora la solicita.",
+            "Inspeccion puntual de danos (opcional, solo si la aseguradora la solicita).",
             "Dos cotizaciones de talleres de la red, cuando aplique."
         };
 
