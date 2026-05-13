@@ -8,7 +8,9 @@ import {
   getReclamoDocumentosPendientes,
   getReclamos,
   marcarDocumentosCompletosReclamo,
+  registrarRespuestaAseguradora,
   solicitarDocumentosReclamo,
+  updateCorreosAseguradora,
   updateReclamoDocumento,
   type ClaimPendingDocument,
 } from '../api/reclamosApi'
@@ -24,6 +26,7 @@ import { notify } from '../components/ToastHost'
 import type { ClaimChecklistItem, ClaimItem, ClaimsResponse } from '../types/reclamos'
 import { compactMeta, dateFmt } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
+import { reclamoDocumentLabel, reclamoDocumentNote } from '../utils/reclamos'
 
 export function ReclamosView() {
   const [data, setData] = useState<ClaimsResponse | null>(null)
@@ -38,6 +41,9 @@ export function ReclamosView() {
   const [actionMessage, setActionMessage] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
   const [correoAseguradora, setCorreoAseguradora] = useState('')
+  const [correoCopia, setCorreoCopia] = useState('')
+  const [respuestaAseguradora, setRespuestaAseguradora] = useState('')
+  const [aseguradoraAprobado, setAseguradoraAprobado] = useState(false)
   const [hideList, setHideList] = useState(false)
 
   async function load() {
@@ -81,6 +87,10 @@ export function ReclamosView() {
 
   useEffect(() => {
     if (!selected) return
+    setCorreoAseguradora(selected.correoAseguradoraPrincipal || '')
+    setCorreoCopia(selected.correoAseguradoraCopia || '')
+    setRespuestaAseguradora(selected.respuestaAseguradora || '')
+    setAseguradoraAprobado(Boolean(selected.aseguradoraAprobado))
     getReclamoChecklist(selected.id, selected.tipoReclamo)
       .then((res) => {
         setChecklist(res.requisitos)
@@ -124,6 +134,16 @@ export function ReclamosView() {
     } finally {
       setActionBusy(false)
     }
+  }
+
+  async function saveInsurerEmails() {
+    if (!selected) return
+    await runAction(() => updateCorreosAseguradora(selected.id, correoAseguradora, correoCopia), 'Correos de aseguradora guardados.')
+  }
+
+  async function saveInsurerResponse() {
+    if (!selected) return
+    await runAction(() => registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado), aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron deducible y RSA.' : 'Respuesta de aseguradora guardada.')
   }
 
   function confirmCompleteAndSend() {
@@ -199,7 +219,10 @@ export function ReclamosView() {
                           disabled={actionBusy}
                           onChange={(event) => void runAction(() => updateReclamoDocumento(selected.id, doc.id, event.target.checked), 'Documento actualizado.')}
                         />
-                        {doc.documento}
+                        <span>
+                          {reclamoDocumentLabel(doc.documento)}
+                          {reclamoDocumentNote(doc.documento) && <small className="doc-note">{reclamoDocumentNote(doc.documento)}</small>}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -207,7 +230,7 @@ export function ReclamosView() {
                   {checklist.length > 0 && (
                     <div className="mini-grid">
                       {checklist.map((req) => (
-                        <StatusPill key={req.id} text={`${req.tipoDocumento}${req.requerido ? ' *' : ''}`} tone={req.requerido ? 'warning' : 'info'} />
+                        <StatusPill key={req.id} text={`${reclamoDocumentLabel(req.tipoDocumento)}${req.requerido ? ' *' : ''}`} tone={req.requerido ? 'warning' : 'info'} />
                       ))}
                     </div>
                   )}
@@ -218,11 +241,33 @@ export function ReclamosView() {
                 <AccordionSection title="Envio a aseguradora" subtitle="Comparte documentos adjuntos por correo.">
                   <div className="insurer-box">
                     <label className="field compact-field">
-                      <span>Correo aseguradora</span>
+                      <span>Correo principal</span>
                       <input value={correoAseguradora} onChange={(event) => setCorreoAseguradora(event.target.value)} placeholder="correo@aseguradora.com" />
                     </label>
-                    <button className="icon-button" disabled={actionBusy} onClick={() => void runAction(() => enviarDocumentosAseguradora(selected.id, correoAseguradora), 'Documentos enviados a la aseguradora.')}>
+                    <label className="field compact-field">
+                      <span>Correo copia</span>
+                      <input value={correoCopia} onChange={(event) => setCorreoCopia(event.target.value)} placeholder="copia@correo.com" />
+                    </label>
+                    <button className="icon-button secondary" disabled={actionBusy} onClick={() => void saveInsurerEmails()}>
+                      Guardar correos
+                    </button>
+                    <button className="icon-button" disabled={actionBusy} onClick={() => void runAction(() => enviarDocumentosAseguradora(selected.id, correoAseguradora, correoCopia), 'Documentos enviados a la aseguradora.')}>
                       <Send size={16} />Enviar adjuntos
+                    </button>
+                  </div>
+                </AccordionSection>
+                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir deducible y RSA.">
+                  <div className="insurer-box">
+                    <label className="wide-field">
+                      <span>Correo o respuesta recibida</span>
+                      <textarea value={respuestaAseguradora} rows={5} onChange={(event) => setRespuestaAseguradora(event.target.value)} placeholder="Pega aqui la respuesta de la aseguradora." />
+                    </label>
+                    <label className="check-field">
+                      <input type="checkbox" checked={aseguradoraAprobado} onChange={(event) => setAseguradoraAprobado(event.target.checked)} />
+                      Expediente aprobado por aseguradora
+                    </label>
+                    <button className="icon-button" disabled={actionBusy} onClick={() => void saveInsurerResponse()}>
+                      Guardar respuesta
                     </button>
                   </div>
                 </AccordionSection>

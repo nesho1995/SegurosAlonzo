@@ -55,14 +55,13 @@ Reciba un cordial saludo. Le comunicamos que su reclamo fue notificado con fecha
 
 Para poder avanzar con la gestion debe completar la siguiente documentacion:
 
-1. Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente.
+1. Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente. Puede compartir este aviso al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.
 2. Certificacion de Transito.
 3. Tarjeta de identidad del conductor, ambos lados.
 4. Licencia del conductor, ambos lados.
 5. Boleta de circulacion del vehiculo asegurado.
 6. Inspeccion puntual de danos en Seguros Crefisa.
 7. Dos cotizaciones de talleres de la red, cuando aplique.
-8. Estar al dia con el pago de primas del seguro.
 
 {bloqueTalleres}
 

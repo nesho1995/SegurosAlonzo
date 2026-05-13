@@ -969,6 +969,20 @@ th.col-acciones {
   font-weight: 800;
 }
 
+.check-field span,
+.check-field small {
+  display: block;
+  min-width: 0;
+}
+
+.doc-note {
+  margin-top: 4px;
+  color: #607177;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .form-actions,
 .policy-actions {
   display: flex;

@@ -34,8 +34,16 @@ export function enviarRecordatorioReclamo(id: number) {
   return postJson<{ ok: boolean; response: string }>(`/api/reclamos/${id}/enviar-recordatorio`, {})
 }
 
-export function enviarDocumentosAseguradora(id: number, correoAseguradora: string) {
-  return postJson<{ ok: boolean; response: string }>(`/api/reclamos/${id}/enviar-aseguradora`, { correoAseguradora })
+export function enviarDocumentosAseguradora(id: number, correoAseguradora?: string, correoCopia?: string) {
+  return postJson<{ ok: boolean; response: string }>(`/api/reclamos/${id}/enviar-aseguradora`, { correoAseguradora, correoCopia })
+}
+
+export function updateCorreosAseguradora(id: number, principal?: string, copia?: string) {
+  return requestJson(`/api/reclamos/${id}/correos-aseguradora`, 'PUT', { principal, copia })
+}
+
+export function registrarRespuestaAseguradora(id: number, respuesta: string, aprobado: boolean) {
+  return postJson(`/api/reclamos/${id}/respuesta-aseguradora`, { respuesta, aprobado })
 }
 
 export type ClaimPendingDocument = {

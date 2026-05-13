@@ -19,10 +19,14 @@ public class EmailSenderService
         _storage = storage;
     }
 
-    public async Task<(bool ok, string response)> EnviarDocumentosReclamoAsync(ReclamoWhatsApp reclamo, string destino, IEnumerable<DocumentoDto> documentos)
+    public async Task<(bool ok, string response)> EnviarDocumentosReclamoAsync(ReclamoWhatsApp reclamo, string destino, IEnumerable<DocumentoDto> documentos, string? copia = null)
     {
         if (string.IsNullOrWhiteSpace(destino) || !MailboxAddress.TryParse(destino.Trim(), out var to))
             return (false, "Ingresa un correo valido de aseguradora.");
+
+        MailboxAddress? cc = null;
+        if (!string.IsNullOrWhiteSpace(copia) && !MailboxAddress.TryParse(copia.Trim(), out cc))
+            return (false, "Ingresa un correo de copia valido.");
 
         var docs = documentos.ToList();
         if (docs.Count == 0)
@@ -45,6 +49,8 @@ public class EmailSenderService
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromAddress));
         message.To.Add(to);
+        if (cc is not null)
+            message.Cc.Add(cc);
         message.Subject = $"Documentos de reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString()}";
 
         var builder = new BodyBuilder

@@ -22,6 +22,11 @@ export type ClaimItem = {
   tallerSugeridoId?: number
   tallerAsignadoId?: number
   motivoSugerenciaTaller?: string
+  correoAseguradoraPrincipal?: string
+  correoAseguradoraCopia?: string
+  respuestaAseguradora?: string
+  fechaRespuestaAseguradora?: string
+  aseguradoraAprobado?: boolean
   fechaCreacion: string
 }
 

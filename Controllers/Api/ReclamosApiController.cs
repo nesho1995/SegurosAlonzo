@@ -75,6 +75,11 @@ public class ReclamosApiController : ControllerBase
                 item.TallerSugeridoId,
                 item.TallerAsignadoId,
                 item.MotivoSugerenciaTaller,
+                item.CorreoAseguradoraPrincipal,
+                item.CorreoAseguradoraCopia,
+                item.RespuestaAseguradora,
+                item.FechaRespuestaAseguradora,
+                item.AseguradoraAprobado,
                 DocumentosPendientes = faltantes
             });
         }
@@ -139,6 +144,12 @@ public class ReclamosApiController : ControllerBase
         {
             var result = await _whatsApp.EnviarDocumentosRecibidosAsync(reclamo);
             await _auditoria.RegistrarAsync(result.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS", "RECLAMO", id, result.ok ? "Cliente notificado por documentos completos." : result.response);
+            if (!string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
+            {
+                var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
+                var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentos, reclamo.CorreoAseguradoraCopia);
+                await _auditoria.RegistrarAsync(correo.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA_AUTO" : "ERROR_DOCUMENTOS_ASEGURADORA_AUTO", "RECLAMO", id, correo.ok ? $"Documentos enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
+            }
         }
         await _auditoria.RegistrarAsync(
             "ACTUALIZAR_DOCUMENTO_RECLAMO",
@@ -189,8 +200,30 @@ public class ReclamosApiController : ControllerBase
         await _reclamos.UpdateEstadoAsync(id, "DOCUMENTOS_COMPLETOS");
         var result = await _whatsApp.EnviarDocumentosRecibidosAsync(reclamo);
         await _auditoria.RegistrarAsync(result.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS", "RECLAMO", id, result.ok ? "Cliente notificado por documentos completos." : result.response);
+        if (!string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
+        {
+            var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
+            var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentos, reclamo.CorreoAseguradoraCopia);
+            await _auditoria.RegistrarAsync(correo.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA_AUTO" : "ERROR_DOCUMENTOS_ASEGURADORA_AUTO", "RECLAMO", id, correo.ok ? $"Documentos enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
+            result = correo.ok
+                ? (true, "Documentos completos. Cliente notificado y expediente enviado a aseguradora.")
+                : (false, $"Documentos completos, pero no se pudo enviar a aseguradora: {correo.response}");
+        }
         await _auditoria.RegistrarAsync("MARCAR_DOCUMENTOS_COMPLETOS_RECLAMO", "RECLAMO", id, "Documentos marcados como completos.");
         return Ok(new { result.ok, result.response });
+    }
+
+    [HttpPut("{id:int}/correos-aseguradora")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> UpdateCorreosAseguradora(int id, [FromBody] CorreosAseguradoraRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.UpdateCorreosAseguradoraAsync(id, request.Principal, request.Copia);
+        await _auditoria.RegistrarAsync("ACTUALIZAR_CORREOS_ASEGURADORA", "RECLAMO", id, "Correos de aseguradora actualizados.");
+        return NoContent();
     }
 
     [HttpPost("{id:int}/enviar-aseguradora")]
@@ -202,8 +235,10 @@ public class ReclamosApiController : ControllerBase
             return NotFound();
 
         var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
-        var result = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, request.CorreoAseguradora, documentos);
-        await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA" : "ERROR_ENVIAR_DOCUMENTOS_ASEGURADORA", "RECLAMO", id, result.ok ? $"Documentos enviados a {request.CorreoAseguradora}." : result.response);
+        var destino = string.IsNullOrWhiteSpace(request.CorreoAseguradora) ? reclamo.CorreoAseguradoraPrincipal : request.CorreoAseguradora;
+        var copia = string.IsNullOrWhiteSpace(request.CorreoCopia) ? reclamo.CorreoAseguradoraCopia : request.CorreoCopia;
+        var result = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, destino ?? "", documentos, copia);
+        await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA" : "ERROR_ENVIAR_DOCUMENTOS_ASEGURADORA", "RECLAMO", id, result.ok ? $"Documentos enviados a {destino}." : result.response);
         return Ok(new { result.ok, result.response });
     }
 
@@ -260,7 +295,28 @@ public class ReclamosApiController : ControllerBase
         await _auditoria.RegistrarAsync("REPROCESAR_CORREO_RECLAMO", "RECLAMO", id, "Se solicito reproceso manual del correo.");
         return Ok(new { message = "Reproceso registrado para seguimiento." });
     }
+
+    [HttpPost("{id:int}/respuesta-aseguradora")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> RegistrarRespuestaAseguradora(int id, [FromBody] RespuestaAseguradoraRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, request.Aprobado);
+        if (request.Aprobado)
+        {
+            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de deducible");
+            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
+        }
+
+        await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, request.Aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes." : "Respuesta de aseguradora registrada.");
+        return NoContent();
+    }
 }
 
 public sealed record ActualizarDocumentoReclamoRequest(bool Recibido);
-public sealed record EnviarAseguradoraRequest(string CorreoAseguradora);
+public sealed record EnviarAseguradoraRequest(string? CorreoAseguradora, string? CorreoCopia);
+public sealed record CorreosAseguradoraRequest(string? Principal, string? Copia);
+public sealed record RespuestaAseguradoraRequest(string? Respuesta, bool Aprobado);

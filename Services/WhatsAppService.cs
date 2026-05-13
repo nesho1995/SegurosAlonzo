@@ -277,7 +277,7 @@ public class WhatsAppService
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
         var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
-        var documentos = "Aviso de accidente original firmado, Certificacion de Transito, identidad y licencia del conductor, boleta de circulacion, inspeccion puntual de danos, cotizaciones de talleres cuando aplique y estar al dia con primas.";
+        var documentos = "Aviso de accidente original firmado, Certificacion de Transito, identidad y licencia del conductor, boleta de circulacion, inspeccion puntual de danos y cotizaciones de talleres cuando aplique. El aviso de accidente puede compartirlo al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.";
 
         var talleres = await BuildTalleresBlockAsync(r);
         var mensaje = r.MensajeWhatsApp ?? $@"Buenas tardes, {nombre}.

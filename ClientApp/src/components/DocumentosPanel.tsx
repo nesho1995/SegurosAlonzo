@@ -6,6 +6,7 @@ import { dateFmt } from '../utils/formatters'
 import { useAuth } from '../hooks/useAuth'
 import { ConfirmDialog } from './ConfirmDialog'
 import { notify } from './ToastHost'
+import { reclamoDocumentLabel } from '../utils/reclamos'
 
 const maxDocumentBytes = 5 * 1024 * 1024
 const allowedDocumentExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'doc', 'docx', 'xls', 'xlsx']
@@ -152,7 +153,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
         <label className="field compact-field">
           <span>Tipo</span>
           <select value={tipoDocumento} onChange={(event) => setTipoDocumento(event.target.value)}>
-            {documentTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+            {documentTypes.map((type) => <option key={type} value={type}>{entidadTipo === 'RECLAMO' ? reclamoDocumentLabel(type) : type}</option>)}
           </select>
         </label>
         {entidadTipo === 'RECLAMO' && (
@@ -215,7 +216,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
               {isImage(item.extension) ? <FileImage size={20} /> : <FileText size={20} />}
               <div>
                 <strong>{item.nombreArchivoOriginal}</strong>
-                <span>{item.tipoDocumento} / {dateFmt.format(new Date(item.fechaSubida))} / {item.usuario || 'Sistema'} / {formatBytes(item.tamanoBytes)}</span>
+                <span>{entidadTipo === 'RECLAMO' ? reclamoDocumentLabel(item.tipoDocumento) : item.tipoDocumento} / {dateFmt.format(new Date(item.fechaSubida))} / {item.usuario || 'Sistema'} / {formatBytes(item.tamanoBytes)}</span>
               </div>
               {entidadTipo === 'RECLAMO' && (
                 <label className="document-observation-cell">

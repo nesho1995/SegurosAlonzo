@@ -13,6 +13,7 @@ import {
   type ConversacionListItem, type MensajeDto,
   type ReclamoLinkOption,
 } from '../api/whatsappBandeja'
+import { reclamoDocumentLabel } from '../utils/reclamos'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -840,7 +841,7 @@ function BurbujaMensaje({
                   <option value="">Asociar a documento...</option>
                   {documentos.map(doc => (
                     <option key={doc.id} value={doc.id}>
-                      {doc.recibido ? 'Recibido - ' : ''}{doc.documento}
+                      {doc.recibido ? 'Recibido - ' : ''}{reclamoDocumentLabel(doc.documento)}
                     </option>
                   ))}
                 </select>

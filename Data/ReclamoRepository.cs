@@ -28,6 +28,9 @@ public class ReclamoRepository
                 taller_sugerido_id TallerSugeridoId, taller_asignado_id TallerAsignadoId,
                 ciudad_detectada CiudadDetectada, motivo_sugerencia_taller MotivoSugerenciaTaller,
                 descripcion Descripcion, monto_estimado MontoEstimado, monto_aprobado MontoAprobado, monto_pagado MontoPagado,
+                correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
+                respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
+                aseguradora_aprobado AseguradoraAprobado,
                 actualizado_en ActualizadoEn,
                 estado Estado, fecha_creacion FechaCreacion, fecha_envio FechaEnvio,
                 error Error
@@ -53,6 +56,9 @@ public class ReclamoRepository
                 taller_sugerido_id TallerSugeridoId, taller_asignado_id TallerAsignadoId,
                 ciudad_detectada CiudadDetectada, motivo_sugerencia_taller MotivoSugerenciaTaller,
                 descripcion Descripcion, monto_estimado MontoEstimado, monto_aprobado MontoAprobado, monto_pagado MontoPagado,
+                correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
+                respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
+                aseguradora_aprobado AseguradoraAprobado,
                 actualizado_en ActualizadoEn,
                 estado Estado, fecha_creacion FechaCreacion, fecha_envio FechaEnvio,
                 error Error
@@ -146,13 +152,12 @@ public class ReclamoRepository
         var documentos = new[]
         {
             "Aviso de accidente",
-            "Certificación de tránsito",
+            "Certificacion de transito",
             "Tarjeta de identidad del conductor",
             "Licencia del conductor",
-            "Boleta de circulación",
-            "Inspección puntual de daños",
-            "2 cotizaciones de talleres",
-            "Pago de primas al día"
+            "Boleta de circulacion",
+            "Inspeccion puntual de danos",
+            "2 cotizaciones de talleres"
         };
 
         const string existeSql = @"
@@ -200,6 +205,24 @@ public class ReclamoRepository
         return await cn.QueryAsync<ReclamoDocumento>(sql, new { reclamoId });
     }
 
+    public async Task AgregarDocumentoPendienteSiNoExisteAsync(int reclamoId, string documento)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            INSERT INTO reclamo_documentos (reclamo_id, documento, recibido)
+            SELECT @reclamoId, @documento, 0
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM reclamo_documentos
+                WHERE reclamo_id = @reclamoId
+                  AND LOWER(documento) = LOWER(@documento)
+            );";
+
+        await cn.ExecuteAsync(sql, new { reclamoId, documento = documento.Trim() });
+    }
+
     public async Task ActualizarDocumentoAsync(int documentoId, int reclamoId, bool recibido)
     {
         await EnsureSchemaAsync();
@@ -233,6 +256,49 @@ public class ReclamoRepository
             WHERE reclamo_id = @reclamoId;";
 
         await cn.ExecuteAsync(sql, new { reclamoId, recibido });
+    }
+
+    public async Task UpdateCorreosAseguradoraAsync(int id, string? principal, string? copia)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET correo_aseguradora_principal = @principal,
+                correo_aseguradora_copia = @copia,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            principal = string.IsNullOrWhiteSpace(principal) ? null : principal.Trim(),
+            copia = string.IsNullOrWhiteSpace(copia) ? null : copia.Trim()
+        });
+    }
+
+    public async Task RegistrarRespuestaAseguradoraAsync(int id, string? respuesta, bool aprobado)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET respuesta_aseguradora = @respuesta,
+                fecha_respuesta_aseguradora = NOW(),
+                aseguradora_aprobado = @aprobado,
+                estado = CASE WHEN @aprobado = 1 THEN 'ASEGURADORA_APROBADO' ELSE 'EN_REVISION_ASEGURADORA' END,
+                estado_reclamo = CASE WHEN @aprobado = 1 THEN 'ASEGURADORA_APROBADO' ELSE 'EN_REVISION_ASEGURADORA' END,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            respuesta = string.IsNullOrWhiteSpace(respuesta) ? null : respuesta.Trim(),
+            aprobado
+        });
     }
 
     public async Task<bool> TodosDocumentosRecibidosAsync(int reclamoId)
@@ -453,7 +519,17 @@ public class ReclamoRepository
                 ADD COLUMN IF NOT EXISTS monto_estimado DECIMAL(18,2) NULL,
                 ADD COLUMN IF NOT EXISTS monto_aprobado DECIMAL(18,2) NULL,
                 ADD COLUMN IF NOT EXISTS monto_pagado DECIMAL(18,2) NULL,
+                ADD COLUMN IF NOT EXISTS correo_aseguradora_principal VARCHAR(180) NULL,
+                ADD COLUMN IF NOT EXISTS correo_aseguradora_copia VARCHAR(180) NULL,
+                ADD COLUMN IF NOT EXISTS respuesta_aseguradora TEXT NULL,
+                ADD COLUMN IF NOT EXISTS fecha_respuesta_aseguradora DATETIME NULL,
+                ADD COLUMN IF NOT EXISTS aseguradora_aprobado TINYINT(1) NOT NULL DEFAULT 0,
                 ADD COLUMN IF NOT EXISTS actualizado_en DATETIME NULL;
+            DELETE FROM reclamo_documentos
+            WHERE LOWER(documento) IN ('pago de primas al dia', 'pago de primas al día', 'pago de primas al dÃ­a');
+            UPDATE reclamo_documentos SET documento = 'Certificacion de transito' WHERE documento = 'CertificaciÃ³n de trÃ¡nsito';
+            UPDATE reclamo_documentos SET documento = 'Boleta de circulacion' WHERE documento = 'Boleta de circulaciÃ³n';
+            UPDATE reclamo_documentos SET documento = 'Inspeccion puntual de danos' WHERE documento = 'InspecciÃ³n puntual de daÃ±os';
             UPDATE reclamos_whatsapp
             SET fecha_reclamo = IFNULL(fecha_reclamo, fecha_notificacion),
                 tipo_reclamo = IFNULL(tipo_reclamo, 'GENERAL'),

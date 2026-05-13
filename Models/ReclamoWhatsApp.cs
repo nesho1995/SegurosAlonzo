@@ -30,6 +30,11 @@ public class ReclamoWhatsApp
     public decimal? MontoEstimado { get; set; }
     public decimal? MontoAprobado { get; set; }
     public decimal? MontoPagado { get; set; }
+    public string? CorreoAseguradoraPrincipal { get; set; }
+    public string? CorreoAseguradoraCopia { get; set; }
+    public string? RespuestaAseguradora { get; set; }
+    public DateTime? FechaRespuestaAseguradora { get; set; }
+    public bool AseguradoraAprobado { get; set; }
     public DateTime? ActualizadoEn { get; set; }
     public DateTime FechaCreacion { get; set; }
     public DateTime? FechaEnvio { get; set; }
