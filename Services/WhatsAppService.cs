@@ -377,10 +377,7 @@ Atentamente.".Trim();
                 config.LanguageCode,
                 config,
                 UsesExpandedClaimTemplate(config.ReclamoReminderTemplateName)
-                    ? BuildFixedTemplateParameters(
-                        [nombre, referencia],
-                        documentos,
-                        ReminderDocumentParameterCount)
+                    ? BuildReminderTemplateParameters(nombre, referencia, documentos)
                     : [nombre, referencia, lista],
                 mensaje);
         }
@@ -480,6 +477,22 @@ Atentamente.".Trim();
             normalized.Add("No aplica");
 
         return normalized;
+    }
+
+    private static string[] BuildReminderTemplateParameters(string nombre, string referencia, IEnumerable<string> documentos)
+    {
+        var parameters = new List<string>
+        {
+            TemplateBlankSafe(nombre),
+            TemplateBlankSafe(referencia)
+        };
+
+        var documentItems = documentos.Select(TemplateBlankSafe).Take(ReminderDocumentParameterCount).ToList();
+        while (documentItems.Count < ReminderDocumentParameterCount)
+            documentItems.Add($"{documentItems.Count + 1}. Documento ya recibido.");
+
+        parameters.AddRange(documentItems);
+        return parameters.ToArray();
     }
 
     private static string TemplateBlankSafe(string? value)
