@@ -19,6 +19,8 @@ public class ReclamoHistoricoImportRow
     public string Reclamo { get; set; } = "";
     public string Vehiculo { get; set; } = "";
     public string Placa { get; set; } = "";
+    public string Celular { get; set; } = "";
+    public string Observaciones { get; set; } = "";
     public DateTime? FechaNotificacion { get; set; }
     public bool Duplicado { get; set; }
     public Dictionary<string, bool> DocumentosRecibidos { get; set; } = new();

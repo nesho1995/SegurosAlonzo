@@ -280,7 +280,7 @@ function ReclamosPreviewTable({ rows }: { rows: ReclamoHistoricoImportPreview['r
   return (
     <div className="preview-table">
       <DataTable
-        headers={['Fila', 'Estado', 'Conductor', 'Poliza', 'Reclamo', 'Vehiculo', 'Documentos', 'Alertas']}
+        headers={['Fila', 'Estado', 'Conductor', 'Poliza', 'Reclamo', 'Vehiculo', 'Celular', 'Documentos', 'Alertas']}
         rows={rows.map((row) => {
           const docs = Object.entries(row.documentosRecibidos).filter(([, ok]) => ok).map(([name]) => name)
           return [
@@ -289,7 +289,8 @@ function ReclamosPreviewTable({ rows }: { rows: ReclamoHistoricoImportPreview['r
             <Cell top={row.conductor || 'Sin conductor'} bot={row.cliente} />,
             row.poliza || <span className="muted-text">—</span>,
             row.reclamo || <span className="muted-text">Sin reclamo</span>,
-            <Cell top={row.vehiculo || '—'} bot={row.placa} />,
+            <Cell top={row.vehiculo || '—'} bot={row.placa || row.observaciones} />,
+            row.celular || <span className="muted-text">—</span>,
             docs.length ? docs.join(', ') : <span className="muted-text">Pendientes</span>,
             <>
               <IssueList issues={row.errors} empty="" />

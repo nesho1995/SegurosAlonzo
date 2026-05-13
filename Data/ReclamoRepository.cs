@@ -156,7 +156,6 @@ public class ReclamoRepository
             "Tarjeta de identidad del conductor",
             "Licencia del conductor",
             "Boleta de circulacion",
-            "Inspeccion puntual de danos",
             "2 cotizaciones de talleres"
         };
 

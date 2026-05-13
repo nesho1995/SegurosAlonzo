@@ -15,12 +15,18 @@ public class ReclamoHistoricoImportService
     {
         ["FORMULARIORECLAMO"] = "Aviso de accidente",
         ["AVISOACCIDENTE"] = "Aviso de accidente",
+        ["AVISODEACCIDENTEOFORMULARIORECLAMO"] = "Aviso de accidente",
         ["CERTTRANSITO"] = "Certificacion de transito",
         ["CERTIFICACIONTRANSITO"] = "Certificacion de transito",
+        ["CERTIFICADOTRANSITO"] = "Certificacion de transito",
         ["LICENCIA"] = "Licencia del conductor",
+        ["IDENTIDAD"] = "Tarjeta de identidad del conductor",
         ["BOLETAREVISION"] = "Boleta de circulacion",
         ["BOLETADECIRCULACION"] = "Boleta de circulacion",
-        ["COTIZACIONES"] = "2 cotizaciones de talleres"
+        ["BOLETADECIRCULACIONOREVISION"] = "Boleta de circulacion",
+        ["COTIZACIONES"] = "2 cotizaciones de talleres",
+        ["PAGODEDUCIBLE"] = "Pago de deducible",
+        ["PAGORSA"] = "Pago de RSA (restitucion de suma asegurada)"
     };
 
     public ReclamoHistoricoImportService(ReclamoRepository reclamos)
@@ -75,9 +81,10 @@ public class ReclamoHistoricoImportService
                 Reclamo = row.Reclamo,
                 NumeroReclamo = row.Reclamo,
                 Conductor = row.Conductor,
+                Celular = NormalizePhone(row.Celular),
                 FechaNotificacion = row.FechaNotificacion,
                 LugarAccidente = "",
-                Descripcion = row.Vehiculo,
+                Descripcion = BuildDescription(row),
                 TipoReclamo = "AUTOS",
                 Estado = "EN_SEGUIMIENTO",
                 EstadoReclamo = "EN_SEGUIMIENTO",
@@ -118,6 +125,8 @@ public class ReclamoHistoricoImportService
             Poliza = NormalizePolicy(Get(row, headers, "POLIZA")),
             Reclamo = Get(row, headers, "RECLAMO").ToUpperInvariant(),
             Vehiculo = Get(row, headers, "VEHICULO"),
+            Celular = Get(row, headers, "CELULAR"),
+            Observaciones = Get(row, headers, "OBSERVACIONES"),
             FechaNotificacion = ParseDate(Get(row, headers, "FECHANOTIFICACION"))
         };
         item.Placa = ExtractPlate(item.Vehiculo);
@@ -202,10 +211,41 @@ public class ReclamoHistoricoImportService
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
+        if (double.TryParse(value.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var serial)
+            && serial > 20000
+            && serial < 90000)
+        {
+            return DateTime.FromOADate(serial).Date;
+        }
+
         var formats = new[] { "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "yyyy-MM-dd" };
         return DateTime.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
             ? result
             : null;
+    }
+
+    private static string BuildDescription(ReclamoHistoricoImportRow row)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(row.Vehiculo))
+            parts.Add($"Vehiculo: {row.Vehiculo}");
+        if (!string.IsNullOrWhiteSpace(row.Observaciones))
+            parts.Add($"Observaciones: {row.Observaciones}");
+        return string.Join(Environment.NewLine, parts);
+    }
+
+    private static string NormalizePhone(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var first = Regex.Split(value, @"[/,;]")
+            .Select(x => Regex.Replace(x, @"\D", ""))
+            .FirstOrDefault(x => x.Length >= 8) ?? "";
+        if (first.Length > 8)
+            first = first[^8..];
+
+        return first.Length == 8 ? "504" + first : first;
     }
 
     private static string NormalizeKey(string? value)
