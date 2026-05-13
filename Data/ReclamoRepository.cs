@@ -289,10 +289,12 @@ public class ReclamoRepository
         await cn.ExecuteAsync(sql, new { messageId, estado, error });
     }
 
-    public async Task<IEnumerable<ReclamoWhatsApp>> GetParaRecordatorioAsync()
+    public async Task<IEnumerable<ReclamoWhatsApp>> GetParaRecordatorioAsync(int diasEntreRecordatorios = 1, int maxRecordatorios = 3)
     {
         await EnsureSchemaAsync();
         using var cn = _factory.CreateConnection();
+        diasEntreRecordatorios = Math.Clamp(diasEntreRecordatorios, 1, 365);
+        maxRecordatorios = Math.Clamp(maxRecordatorios, 1, 50);
 
         const string sql = @"
         SELECT
@@ -314,13 +316,13 @@ public class ReclamoRepository
             error Error
         FROM reclamos_whatsapp
         WHERE estado IN ('ENVIADO', 'EN_SEGUIMIENTO')
-        AND fecha_creacion < NOW() - INTERVAL 1 DAY
+        AND fecha_creacion < DATE_SUB(NOW(), INTERVAL @diasEntreRecordatorios DAY)
         AND (
             fecha_ultimo_recordatorio IS NULL
-            OR fecha_ultimo_recordatorio < NOW() - INTERVAL 1 DAY
-        )  AND cantidad_recordatorios < 3;";
+            OR fecha_ultimo_recordatorio < DATE_SUB(NOW(), INTERVAL @diasEntreRecordatorios DAY)
+        )  AND cantidad_recordatorios < @maxRecordatorios;";
 
-        return await cn.QueryAsync<ReclamoWhatsApp>(sql);
+        return await cn.QueryAsync<ReclamoWhatsApp>(sql, new { diasEntreRecordatorios, maxRecordatorios });
     }
 
     public async Task MarcarRecordatorioAsync(int id)

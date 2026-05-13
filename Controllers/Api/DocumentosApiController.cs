@@ -28,12 +28,17 @@ public class DocumentosApiController : ControllerBase
     [HttpPost("upload")]
     [Authorize(Policy = Permissions.DocumentosSubir)]
     [EnableRateLimiting("upload")]
-    public async Task<IActionResult> Upload([FromForm] IFormFile archivo, [FromForm] string entidadTipo, [FromForm] int entidadId, [FromForm] string? tipoDocumento)
+    public async Task<IActionResult> Upload([FromForm] IFormFile archivo, [FromForm] string entidadTipo, [FromForm] int entidadId, [FromForm] string? tipoDocumento, [FromForm] string? observacion)
     {
         try
         {
             var usuarioId = GetUsuarioId();
             var documento = await _storage.GuardarAsync(archivo, entidadTipo, entidadId, tipoDocumento ?? "General", usuarioId);
+            if (!string.IsNullOrWhiteSpace(observacion))
+            {
+                await _documentos.UpdateObservacionAsync(documento.Id, observacion);
+                documento.Observacion = observacion.Trim();
+            }
             await _auditoria.RegistrarAsync("SUBIR_DOCUMENTO", entidadTipo.Trim().ToUpperInvariant(), entidadId, $"Documento subido: {documento.NombreArchivoOriginal}.");
             return Ok(documento);
         }
@@ -144,6 +149,15 @@ public class DocumentosApiController : ControllerBase
         };
     }
 
+    [HttpPut("{id:int}/observacion")]
+    [Authorize(Policy = Permissions.DocumentosSubir)]
+    public async Task<IActionResult> UpdateObservacion(int id, [FromBody] DocumentoObservacionRequest request)
+    {
+        await _documentos.UpdateObservacionAsync(id, request.Observacion);
+        await _auditoria.RegistrarAsync("ACTUALIZAR_OBSERVACION_DOCUMENTO", "DOCUMENTO", id, "Observacion de documento actualizada.");
+        return NoContent();
+    }
+
     private static string BuildInlineContentDisposition(string? fileName)
     {
         var safeName = SanitizeHeaderFileName(fileName);
@@ -165,3 +179,5 @@ public class DocumentosApiController : ControllerBase
         return cleaned.Length > 180 ? cleaned[..180] : cleaned;
     }
 }
+
+public sealed record DocumentoObservacionRequest(string? Observacion);

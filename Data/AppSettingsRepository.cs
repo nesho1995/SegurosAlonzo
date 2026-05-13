@@ -145,6 +145,9 @@ public class AppSettingsRepository
         bool GetBool(string key, bool fallback) =>
             bool.TryParse(Get(key, fallback ? "true" : "false"), out var value) ? value : fallback;
 
+        int GetInt(string key, int fallback, int min, int max) =>
+            int.TryParse(Get(key, fallback.ToString()), out var value) ? Math.Clamp(value, min, max) : fallback;
+
         string GetDias(string key, string fallback, int max)
         {
             var raw = Get(key, fallback);
@@ -166,6 +169,8 @@ public class AppSettingsRepository
             DiasAntesVencimientoCuota = GetDias(nameof(defaults.DiasAntesVencimientoCuota), defaults.DiasAntesVencimientoCuota, 90),
             DiasDespuesCuotaVencida = GetDias(nameof(defaults.DiasDespuesCuotaVencida), defaults.DiasDespuesCuotaVencida, 90),
             DiasAntesVencimientoPoliza = GetDias(nameof(defaults.DiasAntesVencimientoPoliza), defaults.DiasAntesVencimientoPoliza, 180),
+            DiasEntreRecordatoriosReclamo = GetInt(nameof(defaults.DiasEntreRecordatoriosReclamo), defaults.DiasEntreRecordatoriosReclamo, 1, 365),
+            MaxRecordatoriosReclamo = GetInt(nameof(defaults.MaxRecordatoriosReclamo), defaults.MaxRecordatoriosReclamo, 1, 50),
             PlantillaPagoProximo = Get(nameof(defaults.PlantillaPagoProximo), defaults.PlantillaPagoProximo),
             PlantillaPagoVencido = Get(nameof(defaults.PlantillaPagoVencido), defaults.PlantillaPagoVencido),
             PlantillaPolizaPorVencer = Get(nameof(defaults.PlantillaPolizaPorVencer), defaults.PlantillaPolizaPorVencer),
@@ -193,6 +198,8 @@ public class AppSettingsRepository
             [nameof(config.DiasAntesVencimientoCuota)] = NormalizeDias(config.DiasAntesVencimientoCuota, 90, "7,3,1"),
             [nameof(config.DiasDespuesCuotaVencida)] = NormalizeDias(config.DiasDespuesCuotaVencida, 90, "1,3,7,15"),
             [nameof(config.DiasAntesVencimientoPoliza)] = NormalizeDias(config.DiasAntesVencimientoPoliza, 180, "30,15,7"),
+            [nameof(config.DiasEntreRecordatoriosReclamo)] = Math.Clamp(config.DiasEntreRecordatoriosReclamo, 1, 365).ToString(),
+            [nameof(config.MaxRecordatoriosReclamo)] = Math.Clamp(config.MaxRecordatoriosReclamo, 1, 50).ToString(),
             [nameof(config.PlantillaPagoProximo)] = config.PlantillaPagoProximo ?? "",
             [nameof(config.PlantillaPagoVencido)] = config.PlantillaPagoVencido ?? "",
             [nameof(config.PlantillaPolizaPorVencer)] = config.PlantillaPolizaPorVencer ?? "",

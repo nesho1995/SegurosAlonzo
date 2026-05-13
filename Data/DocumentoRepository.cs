@@ -39,6 +39,7 @@ public class DocumentoRepository
                 COALESCE(NULLIF(d.nombre_archivo_guardado,''), SUBSTRING_INDEX(COALESCE(NULLIF(d.ruta_relativa,''), COALESCE(NULLIF(d.ruta_archivo,''), d.ruta)), '/', -1)) NombreArchivoGuardado,
                 COALESCE(NULLIF(d.ruta_relativa,''), COALESCE(NULLIF(d.ruta_archivo,''), d.ruta)) RutaRelativa,
                 d.tipo_documento TipoDocumento,
+                d.observacion Observacion,
                 d.fecha_subida FechaSubida,
                 d.subido_por_usuario_id SubidoPorUsuarioId,
                 COALESCE(u.Username, 'Sistema') Usuario,
@@ -70,6 +71,7 @@ public class DocumentoRepository
                 COALESCE(NULLIF(nombre_archivo_guardado,''), SUBSTRING_INDEX(COALESCE(NULLIF(ruta_relativa,''), COALESCE(NULLIF(ruta_archivo,''), ruta)), '/', -1)) NombreArchivoGuardado,
                 COALESCE(NULLIF(ruta_relativa,''), COALESCE(NULLIF(ruta_archivo,''), ruta)) RutaRelativa,
                 tipo_documento TipoDocumento,
+                observacion Observacion,
                 fecha_subida FechaSubida,
                 subido_por_usuario_id SubidoPorUsuarioId,
                 COALESCE(NULLIF(tamano_bytes,0), `tamaño`) TamanoBytes,
@@ -90,6 +92,18 @@ public class DocumentoRepository
         await cn.ExecuteAsync("UPDATE documentos SET activo = 0 WHERE id = @id;", new { id });
     }
 
+    public async Task UpdateObservacionAsync(int id, string? observacion)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(@"
+            UPDATE documentos
+            SET observacion = @observacion
+            WHERE id = @id
+              AND activo = 1;",
+            new { id, observacion = string.IsNullOrWhiteSpace(observacion) ? null : observacion.Trim() });
+    }
+
     public async Task EnsureSchemaAsync()
     {
         using var cn = _factory.CreateConnection();
@@ -99,6 +113,7 @@ public class DocumentoRepository
                 entidad_tipo VARCHAR(30) NOT NULL,
                 entidad_id INT NOT NULL,
                 tipo_documento VARCHAR(80) NOT NULL,
+                observacion TEXT NULL,
                 nombre_archivo_original VARCHAR(255) NOT NULL,
                 ruta_archivo VARCHAR(500) NOT NULL,
                 mime_type VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream',
@@ -112,6 +127,7 @@ public class DocumentoRepository
             );
             ALTER TABLE documentos
                 ADD COLUMN IF NOT EXISTS tipo_documento VARCHAR(80) NOT NULL DEFAULT 'OTRO',
+                ADD COLUMN IF NOT EXISTS observacion TEXT NULL,
                 ADD COLUMN IF NOT EXISTS nombre_archivo_original VARCHAR(255) NULL,
                 ADD COLUMN IF NOT EXISTS nombre_archivo_guardado VARCHAR(255) NULL,
                 ADD COLUMN IF NOT EXISTS ruta_relativa VARCHAR(500) NULL,

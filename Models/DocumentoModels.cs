@@ -9,6 +9,7 @@ public class Documento
     public string NombreArchivoGuardado { get; set; } = string.Empty;
     public string RutaRelativa { get; set; } = string.Empty;
     public string TipoDocumento { get; set; } = string.Empty;
+    public string? Observacion { get; set; }
     public string MimeType { get; set; } = "application/octet-stream";
     public long TamanoBytes { get; set; }
     public string? HashArchivo { get; set; }
@@ -26,6 +27,7 @@ public class DocumentoDto
     public int EntidadId { get; set; }
     public string NombreArchivoOriginal { get; set; } = string.Empty;
     public string TipoDocumento { get; set; } = string.Empty;
+    public string? Observacion { get; set; }
     public DateTime FechaSubida { get; set; }
     public int? SubidoPorUsuarioId { get; set; }
     public string Usuario { get; set; } = "Sistema";

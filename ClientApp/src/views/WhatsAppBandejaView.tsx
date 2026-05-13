@@ -92,6 +92,7 @@ export function WhatsAppBandejaView() {
   const [mostrarVincular, setMostrarVincular] = useState(false)
   const [documentosReclamo, setDocumentosReclamo] = useState<ClaimPendingDocument[]>([])
   const [documentoSeleccionadoPorMensaje, setDocumentoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
+  const [observacionAdjuntoPorMensaje, setObservacionAdjuntoPorMensaje] = useState<Record<number, string>>({})
   const [guardandoDocumentoId, setGuardandoDocumentoId] = useState<number | null>(null)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -292,8 +293,9 @@ export function WhatsAppBandejaView() {
     setGuardandoDocumentoId(msg.id)
     setMsgError(null)
     try {
-      const res = await guardarDocumentoMensaje(msg.id, convSeleccionada.reclamoId, documentoId)
+      const res = await guardarDocumentoMensaje(msg.id, convSeleccionada.reclamoId, documentoId, observacionAdjuntoPorMensaje[msg.id])
       setDocumentosReclamo(res.checklist)
+      setObservacionAdjuntoPorMensaje(prev => ({ ...prev, [msg.id]: '' }))
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error guardando documento.')
     } finally {
@@ -619,8 +621,10 @@ export function WhatsAppBandejaView() {
                 reclamoId={convSeleccionada.reclamoId}
                 documentos={documentosReclamo}
                 documentoSeleccionado={documentoSeleccionadoPorMensaje[msg.id] ?? ''}
+                observacion={observacionAdjuntoPorMensaje[msg.id] ?? ''}
                 guardando={guardandoDocumentoId === msg.id}
                 onSeleccionarDocumento={(documentoId) => setDocumentoSeleccionadoPorMensaje(prev => ({ ...prev, [msg.id]: documentoId }))}
+                onObservacion={(value) => setObservacionAdjuntoPorMensaje(prev => ({ ...prev, [msg.id]: value }))}
                 onGuardar={() => guardarAdjuntoEnReclamo(msg)}
               />)}
               <div ref={chatEndRef} />
@@ -742,16 +746,20 @@ function BurbujaMensaje({
   reclamoId,
   documentos,
   documentoSeleccionado,
+  observacion,
   guardando,
   onSeleccionarDocumento,
+  onObservacion,
   onGuardar,
 }: {
   msg: MensajeDto
   reclamoId: number | null
   documentos: ClaimPendingDocument[]
   documentoSeleccionado: number | ''
+  observacion: string
   guardando: boolean
   onSeleccionarDocumento: (documentoId: number) => void
+  onObservacion: (value: string) => void
   onGuardar: () => void
 }) {
   const esSaliente = msg.direccion === 'saliente'
@@ -836,6 +844,16 @@ function BurbujaMensaje({
                     </option>
                   ))}
                 </select>
+                <textarea
+                  value={observacion}
+                  onChange={e => onObservacion(e.target.value)}
+                  placeholder="Observacion del adjunto"
+                  rows={2}
+                  style={{
+                    width: '100%', border: '1px solid #cbd5e1', borderRadius: 6,
+                    padding: '5px 7px', fontSize: 12, background: '#fff', resize: 'vertical',
+                  }}
+                />
                 <button
                   onClick={onGuardar}
                   disabled={guardando || !documentoSeleccionado}

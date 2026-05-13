@@ -16,6 +16,8 @@ export type EnvioAutomaticoConfig = {
   diasAntesVencimientoCuota: string
   diasDespuesCuotaVencida: string
   diasAntesVencimientoPoliza: string
+  diasEntreRecordatoriosReclamo: number
+  maxRecordatoriosReclamo: number
   plantillaPagoProximo: string
   plantillaPagoVencido: string
   plantillaPolizaPorVencer: string

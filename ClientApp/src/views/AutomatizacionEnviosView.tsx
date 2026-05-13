@@ -113,6 +113,8 @@ export function AutomatizacionEnviosView() {
             <Field label="Dias antes de vencimiento de cuota" value={config.diasAntesVencimientoCuota} onChange={(value) => setConfig({ ...config, diasAntesVencimientoCuota: value })} />
             <Field label="Dias despues de cuota vencida" value={config.diasDespuesCuotaVencida} onChange={(value) => setConfig({ ...config, diasDespuesCuotaVencida: value })} />
             <Field label="Dias antes de vencimiento de poliza" value={config.diasAntesVencimientoPoliza} onChange={(value) => setConfig({ ...config, diasAntesVencimientoPoliza: value })} />
+            <NumberField label="Dias entre recordatorios de reclamo" value={config.diasEntreRecordatoriosReclamo} min={1} max={365} onChange={(value) => setConfig({ ...config, diasEntreRecordatoriosReclamo: value })} />
+            <NumberField label="Maximo recordatorios por reclamo" value={config.maxRecordatoriosReclamo} min={1} max={50} onChange={(value) => setConfig({ ...config, maxRecordatoriosReclamo: value })} />
           </div>
 
           <PanelTitle title="Plantillas" subtitle="Puedes usar: {cliente}, {poliza}, {fecha_vencimiento}, {monto}, {aseguradora}, {reclamo}, {dias}." />
@@ -150,6 +152,24 @@ function TextTemplate({ label, value, onChange }: { label: string; value: string
     <label className="wide-field">
       <span>{label}</span>
       <textarea value={value} rows={4} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  )
+}
+
+function NumberField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={Number.isFinite(value) ? value : min}
+        onChange={(event) => {
+          const parsed = Number(event.target.value)
+          onChange(Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : min)
+        }}
+      />
     </label>
   )
 }

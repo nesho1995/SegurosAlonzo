@@ -174,11 +174,12 @@ export async function getDocumentosReclamo(
 export async function guardarDocumentoMensaje(
   mensajeId: number,
   reclamoId: number,
-  reclamoDocumentoId: number
+  reclamoDocumentoId: number,
+  observacion?: string
 ): Promise<{ checklist: ClaimPendingDocument[]; completo: boolean }> {
   return apiFetch(`/api/whatsapp/bandeja/mensajes/${mensajeId}/guardar-documento`, {
     method: 'POST',
-    body: JSON.stringify({ reclamoId, reclamoDocumentoId }),
+    body: JSON.stringify({ reclamoId, reclamoDocumentoId, observacion }),
   })
 }
 

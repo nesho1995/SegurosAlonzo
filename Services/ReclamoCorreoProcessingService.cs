@@ -113,7 +113,9 @@ public class ReclamoCorreoProcessingService
             await _recordatorios.GenerarPendientesAsync(envioConfig);
             await _automaticWhatsApp.ProcesarRecordatoriosPendientesAsync();
 
-            var reclamosParaRecordatorio = await _repo.GetParaRecordatorioAsync();
+            var reclamosParaRecordatorio = await _repo.GetParaRecordatorioAsync(
+                envioConfig.DiasEntreRecordatoriosReclamo,
+                envioConfig.MaxRecordatoriosReclamo);
             foreach (var r in reclamosParaRecordatorio)
             {
                 if (!envioConfig.AutoEnviarReclamos)

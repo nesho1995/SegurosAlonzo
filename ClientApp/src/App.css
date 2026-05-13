@@ -556,6 +556,18 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.correo-review-row {
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.correo-review-row small {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: #607177;
+  overflow-wrap: anywhere;
+}
+
 .data-table,
 table {
   width: 100%;
@@ -1415,6 +1427,10 @@ th.col-acciones {
   margin-bottom: 12px;
 }
 
+.claim-documents-panel .documents-head {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) minmax(180px, 260px);
+}
+
 .documents-head h3,
 .documents-head p {
   margin: 0;
@@ -1522,6 +1538,39 @@ th.col-acciones {
   margin-top: 4px;
   color: #607177;
   overflow-wrap: anywhere;
+}
+
+.claim-document-row {
+  grid-template-columns: auto minmax(0, 1fr) minmax(220px, 320px) auto;
+}
+
+.document-observation-field,
+.document-observation-cell {
+  min-width: 0;
+}
+
+.document-observation-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.document-observation-cell span {
+  margin: 0;
+  color: #607177;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.document-observation-cell textarea {
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid #cbd8d5;
+  border-radius: 8px;
+  resize: vertical;
+  color: #172126;
+  font: inherit;
 }
 
 .compact-documents-panel .table-actions .icon-button,
@@ -2337,7 +2386,7 @@ body,
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 .data-table,
@@ -2586,7 +2635,7 @@ body,
   .table-responsive,
   .table-wrap {
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
   }
 
   .data-table,

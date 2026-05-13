@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, FileImage, FileText, Trash2, Upload } from 'lucide-react'
-import { deleteDocumento, getDocumentos, uploadDocumento } from '../api/documentosApi'
+import { deleteDocumento, getDocumentos, updateDocumentoObservacion, uploadDocumento } from '../api/documentosApi'
 import type { DocumentItem, EntityType } from '../types/documentos'
 import { dateFmt } from '../utils/formatters'
 import { useAuth } from '../hooks/useAuth'
@@ -23,6 +23,9 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
   const [previewItem, setPreviewItem] = useState<DocumentItem | null>(null)
   const [previewText, setPreviewText] = useState<string>('')
   const [selectedFileName, setSelectedFileName] = useState('')
+  const [observacion, setObservacion] = useState('')
+  const [observacionesDraft, setObservacionesDraft] = useState<Record<number, string>>({})
+  const [savingObservationId, setSavingObservationId] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const { hasPermission } = useAuth()
   const canUpload = hasPermission('documentos.subir')
@@ -34,6 +37,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
     try {
       const data = await getDocumentos(entidadTipo, entidadId)
       setItems(data.items)
+      setObservacionesDraft(Object.fromEntries(data.items.map((item) => [item.id, item.observacion || ''])))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error inesperado.')
     }
@@ -51,11 +55,12 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
     setMessage(null)
     setUploading(true)
     try {
-      await uploadDocumento(entidadTipo, entidadId, tipoDocumento, file)
+      await uploadDocumento(entidadTipo, entidadId, tipoDocumento, file, observacion)
       notify('Documento subido correctamente.', 'success')
       setMessage('Documento subido correctamente.')
       if (inputRef.current) inputRef.current.value = ''
       setSelectedFileName('')
+      setObservacion('')
       await load()
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Error inesperado.'
@@ -91,6 +96,7 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
       .then((data) => {
         if (!alive) return
         setItems(data.items)
+        setObservacionesDraft(Object.fromEntries(data.items.map((item) => [item.id, item.observacion || ''])))
         setError(null)
         setSelectedFileName('')
       })
@@ -117,8 +123,27 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
       .catch(() => setPreviewText('No se pudo cargar el texto.'))
   }, [previewItem])
 
+  async function saveObservation(item: DocumentItem) {
+    setSavingObservationId(item.id)
+    setError(null)
+    setMessage(null)
+    try {
+      const nextValue = observacionesDraft[item.id] ?? ''
+      await updateDocumentoObservacion(item.id, nextValue)
+      setItems((current) => current.map((doc) => doc.id === item.id ? { ...doc, observacion: nextValue } : doc))
+      setMessage('Observacion actualizada.')
+      notify('Observacion actualizada.', 'success')
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Error inesperado.'
+      setError(text)
+      notify(text, 'error')
+    } finally {
+      setSavingObservationId(null)
+    }
+  }
+
   return (
-    <section className={`documents-panel ${compactMode ? 'compact-documents-panel' : ''}`}>
+    <section className={`documents-panel ${compactMode ? 'compact-documents-panel' : ''} ${entidadTipo === 'RECLAMO' ? 'claim-documents-panel' : ''}`}>
       <div className="documents-head">
         <div>
           <h3>{compactMode ? 'Comprobante' : 'Documentos'}</h3>
@@ -130,6 +155,12 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
             {documentTypes.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
         </label>
+        {entidadTipo === 'RECLAMO' && (
+          <label className="field compact-field document-observation-field">
+            <span>Observacion</span>
+            <input value={observacion} onChange={(event) => setObservacion(event.target.value)} placeholder="Nota del adjunto" />
+          </label>
+        )}
       </div>
 
       {error && <div className="inline-alert danger">{error}</div>}
@@ -180,12 +211,29 @@ export function DocumentosPanel({ entidadTipo, entidadId, compact = false }: { e
           <div className="empty">No hay documentos cargados.</div>
         ) : (
           items.map((item) => (
-            <div className={`document-row ${compactMode ? 'compact' : ''}`} key={item.id}>
+            <div className={`document-row ${compactMode ? 'compact' : ''} ${entidadTipo === 'RECLAMO' ? 'claim-document-row' : ''}`} key={item.id}>
               {isImage(item.extension) ? <FileImage size={20} /> : <FileText size={20} />}
               <div>
                 <strong>{item.nombreArchivoOriginal}</strong>
                 <span>{item.tipoDocumento} / {dateFmt.format(new Date(item.fechaSubida))} / {item.usuario || 'Sistema'} / {formatBytes(item.tamanoBytes)}</span>
               </div>
+              {entidadTipo === 'RECLAMO' && (
+                <label className="document-observation-cell">
+                  <span>Observacion</span>
+                  <textarea
+                    value={observacionesDraft[item.id] ?? item.observacion ?? ''}
+                    rows={2}
+                    onChange={(event) => setObservacionesDraft((current) => ({ ...current, [item.id]: event.target.value }))}
+                  />
+                  <button
+                    className="icon-button secondary compact"
+                    disabled={savingObservationId === item.id || (observacionesDraft[item.id] ?? '') === (item.observacion ?? '')}
+                    onClick={() => void saveObservation(item)}
+                  >
+                    Guardar
+                  </button>
+                </label>
+              )}
               <div className="table-actions">
                 <button className="icon-button secondary" onClick={() => { setPreviewText(''); setPreviewItem(item) }}><FileText size={16} />Preview</button>
                 <a className="icon-button secondary" href={item.descargarUrl} target="_blank" rel="noreferrer"><Download size={16} />Descargar</a>

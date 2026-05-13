@@ -119,7 +119,8 @@ public class DocumentoStorageService
         string entidadTipo,
         int entidadId,
         string tipoDocumento,
-        int? usuarioId)
+        int? usuarioId,
+        string? observacion = null)
     {
         entidadTipo = NormalizarEntidad(entidadTipo);
         if (!EntidadesPermitidas.Contains(entidadTipo))
@@ -178,12 +179,15 @@ public class DocumentoStorageService
             NombreArchivoGuardado = nombreGuardado,
             RutaRelativa = rutaRelativa,
             TipoDocumento = tipo,
+            Observacion = CleanObservacion(observacion),
             SubidoPorUsuarioId = usuarioId,
             TamanoBytes = bytesWritten,
             MimeType = mimeType,
             HashArchivo = hash,
             Extension = extension.TrimStart('.')
         });
+        if (!string.IsNullOrWhiteSpace(observacion))
+            await _documentos.UpdateObservacionAsync(id, observacion);
 
         await _auditoria.RegistrarAsync(
             "SUBIR_DOCUMENTO",
@@ -286,6 +290,14 @@ public class DocumentoStorageService
             .ToArray())
             .Trim();
         return string.IsNullOrWhiteSpace(cleaned) ? "archivo" : cleaned;
+    }
+
+    private static string? CleanObservacion(string? value)
+    {
+        var cleaned = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return null;
+        return cleaned.Length > 1000 ? cleaned[..1000] : cleaned;
     }
 
     private static string CleanRelativeRoot(string value)

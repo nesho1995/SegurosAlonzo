@@ -143,7 +143,7 @@ export function CorreoConfigView() {
         <div className="result-panel">
           {bandeja.length === 0 && <div className="inline-alert info">Aun no hay correos en esta bandeja.</div>}
           {bandeja.map((item) => (
-            <div key={item.id} className="renewal-row">
+            <div key={item.id} className="renewal-row correo-review-row">
               <strong>{item.estado}{item.reclamoId ? ` #${item.reclamoId}` : ''}</strong>
               <span>{item.subject || 'Sin asunto'} - {item.motivo}</span>
               {item.bodyPreview && <small>{item.bodyPreview}</small>}

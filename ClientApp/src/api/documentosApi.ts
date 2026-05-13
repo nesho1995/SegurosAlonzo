@@ -1,16 +1,17 @@
-import { ApiError, getJson } from './http'
+import { ApiError, getJson, sendJson } from './http'
 import type { DocumentItem, EntityType } from '../types/documentos'
 
 export function getDocumentos(entidadTipo: EntityType, entidadId: number) {
   return getJson<{ items: DocumentItem[] }>(`/api/documentos/${entidadTipo}/${entidadId}`)
 }
 
-export async function uploadDocumento(entidadTipo: EntityType, entidadId: number, tipoDocumento: string, file: File) {
+export async function uploadDocumento(entidadTipo: EntityType, entidadId: number, tipoDocumento: string, file: File, observacion?: string) {
   const body = new FormData()
   body.append('archivo', file)
   body.append('entidadTipo', entidadTipo)
   body.append('entidadId', String(entidadId))
   body.append('tipoDocumento', tipoDocumento || 'General')
+  if (observacion?.trim()) body.append('observacion', observacion.trim())
 
   const response = await fetch('/api/documentos/upload', {
     method: 'POST',
@@ -29,6 +30,10 @@ export async function uploadDocumento(entidadTipo: EntityType, entidadId: number
   }
 
   return (await response.json()) as DocumentItem
+}
+
+export function updateDocumentoObservacion(id: number, observacion: string) {
+  return sendJson(`/api/documentos/${id}/observacion`, 'PUT', { observacion })
 }
 
 export async function deleteDocumento(id: number) {

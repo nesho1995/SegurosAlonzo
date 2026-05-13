@@ -236,7 +236,8 @@ public class WhatsAppBandejaApiController : ControllerBase
                     "RECLAMO",
                     req.ReclamoId,
                     seleccionado.Documento,
-                    GetUserId());
+                    GetUserId(),
+                    req.Observacion);
 
                 var yaEstabaCompleto = await _reclamos.TodosDocumentosRecibidosAsync(req.ReclamoId);
                 await _reclamos.ActualizarDocumentoAsync(seleccionado.Id, req.ReclamoId, true);
@@ -341,7 +342,7 @@ public record EstadoRequest(string Estado);
 public record AsociarClienteRequest(int ClienteId);
 public record AsociarReclamoRequest(int? ReclamoId);
 public record AsignarAgenteRequest(int? AgenteId);
-public record GuardarDocumentoWhatsAppRequest(int ReclamoId, int ReclamoDocumentoId);
+public record GuardarDocumentoWhatsAppRequest(int ReclamoId, int ReclamoDocumentoId, string? Observacion);
 public sealed record DownloadedMetaMedia(Stream Stream, string FileName, string ContentType, long? ContentLength);
 public record ReclamoLinkOption(
     int Id,

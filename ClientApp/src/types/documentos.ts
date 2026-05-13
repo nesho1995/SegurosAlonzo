@@ -6,6 +6,7 @@ export type DocumentItem = {
   entidadId: number
   nombreArchivoOriginal: string
   tipoDocumento: string
+  observacion?: string
   fechaSubida: string
   subidoPorUsuarioId?: number
   usuario: string
