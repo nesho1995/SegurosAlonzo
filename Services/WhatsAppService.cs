@@ -437,8 +437,8 @@ Atentamente.".Trim();
 
     private static List<string> BuildInitialDocumentLines()
     {
-        return
-        [
+        var documents = new[]
+        {
             "Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente. Puede compartir este documento (formulario aseguradora) al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.",
             "Certificacion de Transito.",
             "Tarjeta de identidad del conductor, ambos lados.",
@@ -446,7 +446,9 @@ Atentamente.".Trim();
             "Boleta de circulacion del vehiculo asegurado.",
             "Inspeccion puntual de danos, solo si la aseguradora la solicita.",
             "Dos cotizaciones de talleres de la red, cuando aplique."
-        ];
+        };
+
+        return documents.Select((document, index) => $"{index + 1}. {document}").ToList();
     }
 
     private static string[] BuildFixedTemplateParameters(
