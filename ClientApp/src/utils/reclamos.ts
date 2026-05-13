@@ -15,9 +15,3 @@ export function reclamoDocumentLabel(value?: string) {
   const normalized = value.trim().toUpperCase().replaceAll(' ', '_')
   return documentLabels[normalized] || value.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (ch) => ch.toUpperCase())
 }
-
-export function reclamoDocumentNote(value?: string) {
-  const normalized = (value || '').toLowerCase()
-  if (!normalized.includes('aviso de accidente')) return ''
-  return 'Puede compartir este aviso al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.'
-}

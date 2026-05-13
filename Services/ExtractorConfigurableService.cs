@@ -41,7 +41,7 @@ public class ExtractorConfigurableService
             ["Conductor"] = reclamo.Conductor ?? "",
             ["Celular"] = reclamo.Celular ?? "",
             ["Lugar"] = reclamo.LugarAccidente ?? "",
-            ["Ciudad"] = DetectarCiudad(reclamo.LugarAccidente) ?? "",
+            ["Ciudad"] = HondurasLocationService.DetectCity(reclamo.LugarAccidente) ?? "",
             ["Fecha"] = reclamo.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "",
             ["Aseguradora"] = DetectarAseguradora(request, config),
             ["Taller"] = DetectarTaller(request.Cuerpo)
@@ -139,24 +139,6 @@ public class ExtractorConfigurableService
 
         var match = Regex.Match(cuerpo, @"Taller\s*:\s*(.+)", RegexOptions.IgnoreCase);
         return match.Success ? match.Groups[1].Value.Trim() : "";
-    }
-
-    private static string? DetectarCiudad(string? lugar)
-    {
-        if (string.IsNullOrWhiteSpace(lugar))
-            return null;
-
-        if (lugar.Contains("TEGUCIGALPA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("TGU", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("FRANCISCO MORAZAN", StringComparison.OrdinalIgnoreCase))
-            return "TEGUCIGALPA";
-
-        if (lugar.Contains("SAN PEDRO SULA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("S.P.S", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("CORTES", StringComparison.OrdinalIgnoreCase))
-            return "SAN PEDRO SULA";
-
-        return lugar.Trim();
     }
 
     private static string ConstruirMensaje(string plantilla, Dictionary<string, string> campos)

@@ -26,7 +26,7 @@ import { notify } from '../components/ToastHost'
 import type { ClaimChecklistItem, ClaimItem, ClaimsResponse } from '../types/reclamos'
 import { compactMeta, dateFmt } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
-import { reclamoDocumentLabel, reclamoDocumentNote } from '../utils/reclamos'
+import { reclamoDocumentLabel } from '../utils/reclamos'
 
 export function ReclamosView() {
   const [data, setData] = useState<ClaimsResponse | null>(null)
@@ -221,7 +221,6 @@ export function ReclamosView() {
                         />
                         <span>
                           {reclamoDocumentLabel(doc.documento)}
-                          {reclamoDocumentNote(doc.documento) && <small className="doc-note">{reclamoDocumentNote(doc.documento)}</small>}
                         </span>
                       </label>
                     ))}

@@ -21,27 +21,34 @@ public class MessageBuilderService
 
     public async Task<string> GenerateMessageAsync(ReclamoWhatsApp r)
     {
-        var ciudad = DetectarCiudad(r.LugarAccidente);
-        var talleres = (await _talleres.SugerirAsync(ciudad, r.Aseguradora, r.TipoReclamo ?? "AUTOS")).ToList();
+        var ciudad = HondurasLocationService.DetectCity(r.LugarAccidente);
+        var talleres = HondurasLocationService.IsTegucigalpa(ciudad)
+            ? new List<TallerSugerido>()
+            : (await _talleres.SugerirAsync(ciudad, r.Aseguradora, r.TipoReclamo ?? "AUTOS")).ToList();
         var empresa = await _empresa.GetAsync();
 
         r.CiudadDetectada = ciudad;
         r.TallerSugeridoId = talleres.FirstOrDefault()?.Id;
         r.TallerAsignadoId ??= r.TallerSugeridoId;
-        r.MotivoSugerenciaTaller = talleres.Count == 0
+        r.MotivoSugerenciaTaller = HondurasLocationService.IsTegucigalpa(ciudad)
+            ? "Tegucigalpa se gestiona por servicio al cliente"
+            : talleres.Count == 0
             ? "No hay taller parametrizado"
             : talleres.First().Criterio;
 
-        return GenerateMessage(r, talleres, empresa.TelefonoEmpresa);
+        return GenerateMessage(r, talleres, empresa.TelefonoEmpresa, ciudad);
     }
 
-    private static string GenerateMessage(ReclamoWhatsApp r, IEnumerable<TallerSugerido> talleresSugeridos, string? telefonoEmpresa = null)
+    private static string GenerateMessage(ReclamoWhatsApp r, IEnumerable<TallerSugerido> talleresSugeridos, string? telefonoEmpresa = null, string? ciudad = null)
     {
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
         var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
         var talleres = talleresSugeridos.Take(5).ToList();
-        var bloqueTalleres = talleres.Count == 0
+        var bloqueTalleres = HondurasLocationService.IsTegucigalpa(ciudad)
+            ? @"
+Para reclamos en Tegucigalpa, por favor coordine el seguimiento con nuestro servicio al cliente al numero 89659690. Con gusto le apoyaremos para indicarle el proceso con la aseguradora y agilizar la gestion."
+            : talleres.Count == 0
             ? $@"
 Para coordinacion de taller o inspeccion, puede contactarse con la aseguradora o con nosotros para indicarle el proceso correspondiente.{(string.IsNullOrWhiteSpace(telefonoEmpresa) ? "" : $"{Environment.NewLine}Telefono empresa: {telefonoEmpresa}")}"
             : $@"
@@ -70,21 +77,4 @@ Una vez se entregue completa la informacion, se evaluara la cobertura y la aplic
 Atentamente.".Trim();
     }
 
-    private static string? DetectarCiudad(string? lugar)
-    {
-        if (string.IsNullOrWhiteSpace(lugar))
-            return null;
-
-        if (lugar.Contains("TEGUCIGALPA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("TGU", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("FRANCISCO MORAZAN", StringComparison.OrdinalIgnoreCase))
-            return "TEGUCIGALPA";
-
-        if (lugar.Contains("SAN PEDRO SULA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("S.P.S", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("CORTES", StringComparison.OrdinalIgnoreCase))
-            return "SAN PEDRO SULA";
-
-        return lugar.Trim();
-    }
 }

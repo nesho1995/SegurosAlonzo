@@ -27,7 +27,7 @@ public class CorreoExtractorConfig
     public string FechaPattern { get; set; } = @"(?:notificado con fecha|Fecha)\s*:?\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})";
 
     [Required]
-    public string LugarPattern { get; set; } = @"(?:Ocurrido en|Lugar)\s*:?\s*(.+?)(?:\.|\r|\n|$)";
+    public string LugarPattern { get; set; } = @"(?:Ocurrido en|Ocurrio en|Lugar(?: del accidente)?|Accidente ocurrido en)\s*:?\s*([^\r\n]+)";
 
     public static IReadOnlyDictionary<string, string> DefaultValues => new Dictionary<string, string>
     {
@@ -38,6 +38,6 @@ public class CorreoExtractorConfig
         [nameof(ConductorPattern)] = @"Conductor\s*:\s*(.+)",
         [nameof(CelularPattern)] = @"Celular\s*:\s*([0-9\-\s\+]+)",
         [nameof(FechaPattern)] = @"(?:notificado con fecha|Fecha)\s*:?\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})",
-        [nameof(LugarPattern)] = @"(?:Ocurrido en|Lugar)\s*:?\s*(.+?)(?:\.|\r|\n|$)"
+        [nameof(LugarPattern)] = @"(?:Ocurrido en|Ocurrio en|Lugar(?: del accidente)?|Accidente ocurrido en)\s*:?\s*([^\r\n]+)"
     };
 }

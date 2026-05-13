@@ -19,7 +19,7 @@ public class TallerRepository
         string? aseguradora = null)
     {
         await EnsureSchemaAsync();
-        await SeedDefaultTegucigalpaAsync();
+        await SeedDefaultWorkshopsAsync();
         using var cn = _factory.CreateConnection();
         var where = new List<string>();
         var p = new DynamicParameters();
@@ -139,7 +139,7 @@ public class TallerRepository
     public async Task<IEnumerable<TallerSugerido>> SugerirAsync(string? ciudad, string? aseguradora, string? ramo)
     {
         await EnsureSchemaAsync();
-        await SeedDefaultTegucigalpaAsync();
+        await SeedDefaultWorkshopsAsync();
         var ciudadNorm = Normalize(ciudad);
         var aseguradoraNorm = Normalize(aseguradora);
         var ramoNorm = NormalizeRamo(ramo);
@@ -321,15 +321,28 @@ public class TallerRepository
             );");
     }
 
-    public async Task SeedDefaultTegucigalpaAsync()
+    public async Task SeedDefaultWorkshopsAsync()
     {
         using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(@"
+            UPDATE talleres
+            SET activo = 0,
+                observaciones = CONCAT(COALESCE(observaciones, ''), CASE WHEN COALESCE(observaciones, '') = '' THEN '' ELSE ' ' END, 'Inactivo: Tegucigalpa se gestiona por servicio al cliente.')
+            WHERE ciudad = 'TEGUCIGALPA'
+              AND nombre IN (
+                'Taller Auto Excel Tegucigalpa',
+                'Taller El Prado',
+                'Pintura y Enderezado La Kennedy',
+                'Taller Metropolis'
+              );");
+
         var talleres = new[]
         {
-            new Taller { Nombre = "Taller Auto Excel Tegucigalpa", Ciudad = "TEGUCIGALPA", Zona = "MORAZAN", Direccion = "Blvd. Morazan, Tegucigalpa", Telefono = "2239-0001", WhatsApp = "50499990001", AseguradorasAceptadas = ["CREFISA", "GENERAL"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 1, Activo = true },
-            new Taller { Nombre = "Taller El Prado", Ciudad = "TEGUCIGALPA", Zona = "EL PRADO", Direccion = "Colonia El Prado, Tegucigalpa", Telefono = "2235-0002", WhatsApp = "50499990002", AseguradorasAceptadas = ["CREFISA", "GENERAL"], RamosAtendidos = ["AUTOS", "MOTOS"], OrdenPrioridad = 2, Activo = true },
-            new Taller { Nombre = "Pintura y Enderezado La Kennedy", Ciudad = "TEGUCIGALPA", Zona = "KENNEDY", Direccion = "Colonia Kennedy, Tegucigalpa", Telefono = "2240-0003", WhatsApp = "50499990003", AseguradorasAceptadas = ["GENERAL"], RamosAtendidos = ["AUTOS"], OrdenPrioridad = 3, Activo = true },
-            new Taller { Nombre = "Taller Metropolis", Ciudad = "TEGUCIGALPA", Zona = "ANILLO PERIFERICO", Direccion = "Anillo Periferico, Tegucigalpa", Telefono = "2216-0004", WhatsApp = "50499990004", AseguradorasAceptadas = ["GENERAL"], RamosAtendidos = ["AUTOS"], OrdenPrioridad = 4, Activo = true }
+            new Taller { Nombre = "Ausemo", Ciudad = "SAN PEDRO SULA", Zona = "BARRIO GUAMILITO", Direccion = "Bo. Guamilito, 7 Calle, 5 Avenida, S.P.S.", AseguradorasAceptadas = ["CREFISA"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 1, Activo = true },
+            new Taller { Nombre = "Tinte y Friccion", Ciudad = "SAN PEDRO SULA", Zona = "COLONIA HONDURAS", Direccion = "Entrada a colonia Honduras, una cuadra despues de donde era la empacadora continental, S.P.S.", AseguradorasAceptadas = ["CREFISA"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 2, Activo = true },
+            new Taller { Nombre = "Chassis Liner", Ciudad = "SAN PEDRO SULA", Zona = "BARRIO PAZ BARAHONA", Direccion = "Bo. Paz Barahona, 16 Calle, 4-5 Avenida, S.P.S.", AseguradorasAceptadas = ["CREFISA"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 3, Activo = true },
+            new Taller { Nombre = "Smart Paint", Ciudad = "SAN PEDRO SULA", Zona = "BARRIO BARANDILLAS", Direccion = "Bo. Barandillas, 6-7 Calle, 1 Avenida, S.P.S.", AseguradorasAceptadas = ["CREFISA"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 4, Activo = true },
+            new Taller { Nombre = "Finish Car", Ciudad = "SAN PEDRO SULA", Zona = "BARRIO PAZ BARAHONA", Direccion = "Bo. Paz Barahona, 7 Avenida, 13-14 Calle, S.P.S.", AseguradorasAceptadas = ["CREFISA"], RamosAtendidos = ["AUTOS"], EsPreferido = true, OrdenPrioridad = 5, Activo = true }
         };
 
         foreach (var taller in talleres)

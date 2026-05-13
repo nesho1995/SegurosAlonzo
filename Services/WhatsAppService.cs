@@ -9,6 +9,8 @@ namespace ReclamosWhatsApp.Services;
 public class WhatsAppService
 {
     private const int SingleTemplateParameterMaxLength = 900;
+    private const int InitialDocumentParameterCount = 7;
+    private const int ReminderDocumentParameterCount = 6;
 
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
@@ -275,18 +277,19 @@ public class WhatsAppService
     private async Task<(bool ok, string response)> SendReclamoInitialTemplateAsync(ReclamoWhatsApp r, WhatsAppConfig config)
     {
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
+        var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
         var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
-        var documentos = "Aviso de accidente original firmado, Certificacion de Transito, identidad y licencia del conductor, boleta de circulacion, inspeccion puntual de danos y cotizaciones de talleres cuando aplique. El aviso de accidente puede compartirlo al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.";
-
-        var talleres = await BuildTalleresBlockAsync(r);
+        var documentos = BuildInitialDocumentLines();
+        var talleres = await BuildTalleresTextAsync(r);
+        var documentosTexto = string.Join(Environment.NewLine, documentos);
         var mensaje = r.MensajeWhatsApp ?? $@"Buenas tardes, {nombre}.
 
-Reciba un cordial saludo. Le comunicamos que su reclamo fue notificado con fecha {fecha}, ocurrido en {lugar}.
+Reciba un cordial saludo. Le comunicamos que su reclamo {referencia} fue notificado con fecha {fecha}, ocurrido en {lugar}.
 
 Para poder avanzar con la gestion debe completar la siguiente documentacion:
 
-{documentos}
+{documentosTexto}
 
 {talleres}
 
@@ -299,7 +302,14 @@ Atentamente.";
             config.ReclamoInitialTemplateName,
             config.LanguageCode,
             config,
-            [nombre, fecha, lugar, documentos, talleres],
+            UsesExpandedClaimTemplate(config.ReclamoInitialTemplateName)
+                ? BuildFixedTemplateParameters(
+                    [nombre, referencia, fecha, lugar],
+                    documentos,
+                    InitialDocumentParameterCount,
+                    [talleres],
+                    1)
+                : [nombre, fecha, lugar, documentosTexto, talleres],
             mensaje);
     }
 
@@ -339,7 +349,8 @@ Ya se marcaron todos los documentos como recibidos.".Trim();
 
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
-        var lista = string.Join(Environment.NewLine, pendientes.Select((doc, index) => $"{index + 1}. {doc}"));
+        var documentos = pendientes.Select((doc, index) => $"{index + 1}. {doc}").ToList();
+        var lista = string.Join(Environment.NewLine, documentos);
         var mensaje = $@"Buenas tardes {nombre}.
 
 Le recordamos que para continuar con la gestión de su reclamo {referencia}, aún tenemos pendiente recibir:
@@ -358,7 +369,12 @@ Atentamente.".Trim();
                 config.ReclamoReminderTemplateName,
                 config.LanguageCode,
                 config,
-                [nombre, referencia, lista],
+                UsesExpandedClaimTemplate(config.ReclamoReminderTemplateName)
+                    ? BuildFixedTemplateParameters(
+                        [nombre, referencia],
+                        documentos,
+                        ReminderDocumentParameterCount)
+                    : [nombre, referencia, lista],
                 mensaje);
         }
 
@@ -394,36 +410,78 @@ Atentamente.".Trim();
 
     // ─── Helper ───────────────────────────────────────────────────────────────
 
-    private async Task<string> BuildTalleresBlockAsync(ReclamoWhatsApp r)
+    private async Task<string> BuildTalleresTextAsync(ReclamoWhatsApp r)
     {
-        var ciudad = DetectarCiudad(r.LugarAccidente);
+        var ciudad = HondurasLocationService.DetectCity(r.LugarAccidente);
+        if (HondurasLocationService.IsTegucigalpa(ciudad))
+        {
+            return "Para reclamos en Tegucigalpa, por favor escriba a nuestro servicio al cliente al numero 89659690. Con gusto le apoyaremos para coordinar el proceso con la aseguradora y agilizar la gestion.";
+        }
+
         var talleres = (await _talleres.SugerirAsync(ciudad, r.Aseguradora, r.TipoReclamo ?? "AUTOS")).Take(5).ToList();
         if (talleres.Count > 0)
         {
-            return $@"Talleres en red:
-{string.Join(Environment.NewLine, talleres.Select(x => $"- {x.Nombre}: {x.Direccion}{(string.IsNullOrWhiteSpace(x.Telefono) ? "" : $" / Tel. {x.Telefono}")}"))}";
+            return "Talleres en red: " + string.Join(" | ", talleres.Select(x => $"{x.Nombre}: {x.Direccion}{(string.IsNullOrWhiteSpace(x.Telefono) ? "" : $" / Tel. {x.Telefono}")}"));
         }
 
         var empresa = await _empresa.GetAsync();
-        return $@"Para coordinacion de taller o inspeccion, puede contactarse con la aseguradora o con nosotros para indicarle el proceso correspondiente.{(string.IsNullOrWhiteSpace(empresa.TelefonoEmpresa) ? "" : $"{Environment.NewLine}Telefono empresa: {empresa.TelefonoEmpresa}")}";
+        return $"Por favor escriba a servicio al cliente al numero 89659690 para coordinar taller o inspeccion y darle seguimiento con la aseguradora.{(string.IsNullOrWhiteSpace(empresa.TelefonoEmpresa) ? "" : $" Telefono empresa: {empresa.TelefonoEmpresa}")}";
     }
 
-    private static string? DetectarCiudad(string? lugar)
+    private static List<string> BuildInitialDocumentLines()
     {
-        if (string.IsNullOrWhiteSpace(lugar))
-            return null;
+        return
+        [
+            "Aviso de accidente original firmado por el conductor y asegurado. Si es empresa, aplicar sello correspondiente. Puede compartir este documento (formulario aseguradora) al numero de servicio al cliente 89659690 para gestionar firma y sello, y agilizar el tramite con la aseguradora.",
+            "Certificacion de Transito.",
+            "Tarjeta de identidad del conductor, ambos lados.",
+            "Licencia del conductor, ambos lados.",
+            "Boleta de circulacion del vehiculo asegurado.",
+            "Inspeccion puntual de danos en Seguros Crefisa.",
+            "Dos cotizaciones de talleres de la red, cuando aplique."
+        ];
+    }
 
-        if (lugar.Contains("TEGUCIGALPA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("TGU", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("FRANCISCO MORAZAN", StringComparison.OrdinalIgnoreCase))
-            return "TEGUCIGALPA";
+    private static string[] BuildFixedTemplateParameters(
+        IEnumerable<string> headerParameters,
+        IEnumerable<string> variableItems,
+        int itemParameterCount)
+    {
+        return BuildFixedTemplateParameters(headerParameters, variableItems, itemParameterCount, [], 0);
+    }
 
-        if (lugar.Contains("SAN PEDRO SULA", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("S.P.S", StringComparison.OrdinalIgnoreCase)
-            || lugar.Contains("CORTES", StringComparison.OrdinalIgnoreCase))
-            return "SAN PEDRO SULA";
+    private static string[] BuildFixedTemplateParameters(
+        IEnumerable<string> headerParameters,
+        IEnumerable<string> firstItems,
+        int firstItemParameterCount,
+        IEnumerable<string> secondItems,
+        int secondItemParameterCount)
+    {
+        var parameters = new List<string>();
+        parameters.AddRange(headerParameters.Select(TemplateBlankSafe));
+        parameters.AddRange(PadTemplateItems(firstItems, firstItemParameterCount));
+        parameters.AddRange(PadTemplateItems(secondItems, secondItemParameterCount));
+        return parameters.ToArray();
+    }
 
-        return lugar.Trim();
+    private static IEnumerable<string> PadTemplateItems(IEnumerable<string> items, int count)
+    {
+        var normalized = items.Select(TemplateBlankSafe).Take(count).ToList();
+        while (normalized.Count < count)
+            normalized.Add("No aplica");
+
+        return normalized;
+    }
+
+    private static string TemplateBlankSafe(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "No aplica" : value.Trim();
+    }
+
+    private static bool UsesExpandedClaimTemplate(string? templateName)
+    {
+        return !string.IsNullOrWhiteSpace(templateName)
+            && templateName.Contains("_v2", StringComparison.OrdinalIgnoreCase);
     }
 
     private string NormalizePhone(string? value)
