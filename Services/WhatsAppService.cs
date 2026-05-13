@@ -302,7 +302,14 @@ Atentamente.";
             config.ReclamoInitialTemplateName,
             config.LanguageCode,
             config,
-            UsesExpandedClaimTemplate(config.ReclamoInitialTemplateName)
+            UsesCurrentApprovedInitialTemplate(config.ReclamoInitialTemplateName)
+                ? BuildFixedTemplateParameters(
+                    [nombre, fecha, lugar],
+                    documentos,
+                    InitialDocumentParameterCount,
+                    ["No aplica", talleres],
+                    2)
+                : UsesExpandedClaimTemplate(config.ReclamoInitialTemplateName)
                 ? BuildFixedTemplateParameters(
                     [nombre, referencia, fecha, lugar],
                     documentos,
@@ -480,8 +487,15 @@ Atentamente.".Trim();
 
     private static bool UsesExpandedClaimTemplate(string? templateName)
     {
-        return !string.IsNullOrWhiteSpace(templateName)
-            && templateName.Contains("_v2", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(templateName))
+            return false;
+
+        return templateName.Contains("_v2", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool UsesCurrentApprovedInitialTemplate(string? templateName)
+    {
+        return string.Equals(templateName, "params_reclamo_documentos_inicial_es", StringComparison.OrdinalIgnoreCase);
     }
 
     private string NormalizePhone(string? value)
