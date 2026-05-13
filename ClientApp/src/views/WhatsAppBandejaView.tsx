@@ -354,7 +354,7 @@ export function WhatsAppBandejaView() {
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 92px)', minHeight: 520, overflow: 'hidden' }}>
 
       {/* ── Header ── */}
       <div style={{ padding: '14px 20px 0', borderBottom: '1px solid #e2e8f0' }}>
@@ -589,7 +589,17 @@ export function WhatsAppBandejaView() {
             </div>
 
             {/* ── Mensajes ── */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{
+              flex: 1,
+              minHeight: 0,
+              maxHeight: 'calc(100vh - 255px)',
+              overflowY: 'auto',
+              scrollbarGutter: 'stable',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}>
               <div ref={chatTopRef} />
 
               {/* Botón cargar anteriores */}
