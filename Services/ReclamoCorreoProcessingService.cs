@@ -174,11 +174,14 @@ public class ReclamoCorreoProcessingService
         var analysis = AnalyzeInsuranceResponse(email);
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
 
-        if (analysis.Aprobado || analysis.MencionaDeducible)
+        if (analysis.MencionaDeducible)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de deducible");
 
         if (analysis.Aprobado || analysis.MencionaRsa)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de RSA (restitucion de suma asegurada)");
+
+        if (analysis.Aprobado || analysis.MencionaCoaseguro)
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de coaseguro");
 
         if (analysis.SolicitaMasDocumentos)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Documento adicional solicitado por aseguradora");
@@ -190,8 +193,18 @@ public class ReclamoCorreoProcessingService
             acciones.Add("Se habilito seguimiento de pago de deducible.");
         if (analysis.MencionaRsa)
             acciones.Add("Se habilito seguimiento de pago de RSA.");
+        if (analysis.MencionaCoaseguro)
+            acciones.Add("Se habilito seguimiento de pago de coaseguro.");
         if (analysis.SolicitaMasDocumentos)
             acciones.Add("La aseguradora solicito documento o informacion adicional.");
+
+        if (analysis.Aprobado || analysis.MencionaDeducible || analysis.MencionaRsa || analysis.MencionaCoaseguro || analysis.SolicitaMasDocumentos)
+        {
+            var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
+            var pendientes = await _repo.GetDocumentosAsync(reclamo.Id);
+            var envio = await _whatsApp.EnviarRecordatorioAsync(actualizado, pendientes);
+            acciones.Add(envio.ok ? "Cliente notificado por WhatsApp." : $"No se pudo notificar al cliente: {envio.response}");
+        }
 
         estado.ReclamosValidos++;
         await RegistrarDetalleAsync(estado, email, "ASOCIADO", string.Join(" ", acciones), reclamo.Id);
@@ -226,6 +239,7 @@ public class ReclamoCorreoProcessingService
         var approved = !denied && ContainsAny(text, "APROBADO", "APROBADA", "APROBACION", "ACEPTADO", "ACEPTADA", "PROCEDENTE", "AUTORIZADO", "AUTORIZADA");
         var deducible = ContainsAny(text, "DEDUCIBLE");
         var rsa = ContainsAny(text, "RSA", "RESTITUCION DE SUMA ASEGURADA", "RESTITUCION SUMA ASEGURADA");
+        var coaseguro = ContainsAny(text, "COASEGURO", "CO ASEGURO");
         var moreDocs = ContainsAny(
             text,
             "DOCUMENTO ADICIONAL",
@@ -244,7 +258,7 @@ public class ReclamoCorreoProcessingService
             "ENVIAR NUEVAMENTE",
             "CORREGIR");
 
-        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa)), deducible, rsa, !approved && moreDocs);
+        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa || coaseguro)), deducible, rsa, coaseguro, !approved && moreDocs);
     }
 
     private static bool ContainsAny(string text, params string[] values)
@@ -276,7 +290,7 @@ public class ReclamoCorreoProcessingService
         return normalized;
     }
 
-    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa, bool SolicitaMasDocumentos);
+    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa, bool MencionaCoaseguro, bool SolicitaMasDocumentos);
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {

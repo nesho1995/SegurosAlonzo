@@ -17,8 +17,10 @@ public class WhatsAppBandejaApiController : ControllerBase
 {
     private readonly WhatsAppConversacionRepository _repo;
     private readonly ReclamoRepository _reclamos;
+    private readonly DocumentoRepository _documentos;
     private readonly WhatsAppService _whatsapp;
     private readonly DocumentoStorageService _documentoStorage;
+    private readonly EmailSenderService _emailSender;
     private readonly AppSettingsRepository _settings;
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
@@ -28,8 +30,10 @@ public class WhatsAppBandejaApiController : ControllerBase
     public WhatsAppBandejaApiController(
         WhatsAppConversacionRepository repo,
         ReclamoRepository reclamos,
+        DocumentoRepository documentos,
         WhatsAppService whatsapp,
         DocumentoStorageService documentoStorage,
+        EmailSenderService emailSender,
         AppSettingsRepository settings,
         IConfiguration config,
         HttpClient http,
@@ -38,8 +42,10 @@ public class WhatsAppBandejaApiController : ControllerBase
     {
         _repo = repo;
         _reclamos = reclamos;
+        _documentos = documentos;
         _whatsapp = whatsapp;
         _documentoStorage = documentoStorage;
+        _emailSender = emailSender;
         _settings = settings;
         _config = config;
         _http = http;
@@ -252,6 +258,24 @@ public class WhatsAppBandejaApiController : ControllerBase
                         "RECLAMO",
                         req.ReclamoId,
                         result.ok ? "Cliente notificado por documentos completos." : result.response);
+
+                    if (IsPostApprovalStage(reclamo) && !string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
+                    {
+                        var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", req.ReclamoId)).ToList();
+                        var comprobantesFinales = documentos.Where(IsComprobanteFinal).ToList();
+                        var correo = await _emailSender.EnviarDocumentosReclamoAsync(
+                            reclamo,
+                            reclamo.CorreoAseguradoraPrincipal,
+                            comprobantesFinales,
+                            reclamo.CorreoAseguradoraCopia,
+                            soloComprobantesFinales: true);
+
+                        await _auditoria.RegistrarAsync(
+                            correo.ok ? "ENVIAR_COMPROBANTES_FINALES_ASEGURADORA_AUTO" : "ERROR_COMPROBANTES_FINALES_ASEGURADORA_AUTO",
+                            "RECLAMO",
+                            req.ReclamoId,
+                            correo.ok ? $"Comprobantes finales enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
+                    }
                 }
 
                 await _auditoria.RegistrarAsync(
@@ -295,6 +319,41 @@ public class WhatsAppBandejaApiController : ControllerBase
         if (claimPhone.Length >= 8 && chatPhone.Length >= 8)
             return claimPhone[^8..] == chatPhone[^8..];
         return false;
+    }
+
+    private static bool IsPostApprovalStage(ReclamoWhatsApp reclamo)
+    {
+        return reclamo.AseguradoraAprobado
+            || string.Equals(reclamo.Estado, "ASEGURADORA_APROBADO", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reclamo.EstadoReclamo, "ASEGURADORA_APROBADO", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsComprobanteFinal(DocumentoDto documento)
+    {
+        var tipo = NormalizeDocumentText(documento.TipoDocumento);
+        var nombre = NormalizeDocumentText(documento.NombreArchivoOriginal);
+        var observacion = NormalizeDocumentText(documento.Observacion);
+        var combined = $"{tipo} {nombre} {observacion}";
+        return combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
+            || combined.Contains("RSA", StringComparison.Ordinal)
+            || combined.Contains("RESTITUCION", StringComparison.Ordinal)
+            || combined.Contains("COASEGURO", StringComparison.Ordinal)
+            || combined.Contains("CO ASEGURO", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeDocumentText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToUpperInvariant()
+            .Replace('Á', 'A')
+            .Replace('É', 'E')
+            .Replace('Í', 'I')
+            .Replace('Ó', 'O')
+            .Replace('Ú', 'U')
+            .Replace('Ü', 'U')
+            .Replace('Ñ', 'N');
     }
 
     private async Task<DownloadedMetaMedia> DescargarMediaMetaAsync(WhatsAppMensaje msg)

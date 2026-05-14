@@ -19,7 +19,7 @@ public class EmailSenderService
         _storage = storage;
     }
 
-    public async Task<(bool ok, string response)> EnviarDocumentosReclamoAsync(ReclamoWhatsApp reclamo, string destino, IEnumerable<DocumentoDto> documentos, string? copia = null)
+    public async Task<(bool ok, string response)> EnviarDocumentosReclamoAsync(ReclamoWhatsApp reclamo, string destino, IEnumerable<DocumentoDto> documentos, string? copia = null, bool soloComprobantesFinales = false)
     {
         if (string.IsNullOrWhiteSpace(destino) || !MailboxAddress.TryParse(destino.Trim(), out var to))
             return (false, "Ingresa un correo valido de aseguradora.");
@@ -30,7 +30,9 @@ public class EmailSenderService
 
         var docs = documentos.ToList();
         if (docs.Count == 0)
-            return (false, "No hay documentos adjuntos para enviar.");
+            return (false, soloComprobantesFinales
+                ? "No hay comprobantes finales adjuntos para enviar a la aseguradora."
+                : "No hay documentos adjuntos para enviar.");
 
         var smtp = await _settings.GetSmtpConfigAsync(_config);
         if (!smtp.Enabled)
@@ -52,7 +54,9 @@ public class EmailSenderService
         if (cc is not null)
             message.Cc.Add(cc);
         var referencia = reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString();
-        message.Subject = $"Expediente de reclamo {referencia} - documentos para revision";
+        message.Subject = soloComprobantesFinales
+            ? $"Comprobantes finales de reclamo {referencia} - deducible/RSA/coaseguro"
+            : $"Expediente de reclamo {referencia} - documentos para revision";
 
         var adjuntos = docs.Select((doc, index) =>
         {
@@ -68,7 +72,7 @@ public class EmailSenderService
             TextBody = $@"
 Buenas tardes.
 
-Remitimos expediente digital para revision de la aseguradora.
+{(soloComprobantesFinales ? "Remitimos comprobantes finales recibidos del cliente para continuar con el cierre del reclamo." : "Remitimos expediente digital para revision de la aseguradora.")}
 
 Cliente / Conductor: {reclamo.Conductor ?? reclamo.Asegurado}
 Asegurado: {reclamo.Asegurado}
@@ -117,6 +121,7 @@ Quedamos atentos.
             "AVISO_ACCIDENTE" => "Aviso de accidente",
             "PAGO_DEDUCIBLE" => "Pago de deducible",
             "PAGO_RSA" => "Pago de RSA (restitucion de suma asegurada)",
+            "PAGO_COASEGURO" => "Pago de coaseguro",
             _ => value.Replace('_', ' ').Trim()
         };
     }

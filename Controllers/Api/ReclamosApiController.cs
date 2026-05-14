@@ -147,7 +147,9 @@ public class ReclamosApiController : ControllerBase
             if (!string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
             {
                 var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
-                var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentos, reclamo.CorreoAseguradoraCopia);
+                var soloFinales = IsPostApprovalStage(reclamo);
+                var documentosEnviar = soloFinales ? documentos.Where(IsComprobanteFinal).ToList() : documentos;
+                var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentosEnviar, reclamo.CorreoAseguradoraCopia, soloFinales);
                 await _auditoria.RegistrarAsync(correo.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA_AUTO" : "ERROR_DOCUMENTOS_ASEGURADORA_AUTO", "RECLAMO", id, correo.ok ? $"Documentos enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
             }
         }
@@ -203,10 +205,12 @@ public class ReclamosApiController : ControllerBase
         if (!string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
         {
             var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
-            var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentos, reclamo.CorreoAseguradoraCopia);
+            var soloFinales = IsPostApprovalStage(reclamo);
+            var documentosEnviar = soloFinales ? documentos.Where(IsComprobanteFinal).ToList() : documentos;
+            var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentosEnviar, reclamo.CorreoAseguradoraCopia, soloFinales);
             await _auditoria.RegistrarAsync(correo.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA_AUTO" : "ERROR_DOCUMENTOS_ASEGURADORA_AUTO", "RECLAMO", id, correo.ok ? $"Documentos enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
             result = correo.ok
-                ? (true, "Documentos completos. Cliente notificado y expediente enviado a aseguradora.")
+                ? (true, soloFinales ? "Documentos completos. Cliente notificado y comprobantes finales enviados a aseguradora." : "Documentos completos. Cliente notificado y expediente enviado a aseguradora.")
                 : (false, $"Documentos completos, pero no se pudo enviar a aseguradora: {correo.response}");
         }
         await _auditoria.RegistrarAsync("MARCAR_DOCUMENTOS_COMPLETOS_RECLAMO", "RECLAMO", id, "Documentos marcados como completos.");
@@ -307,12 +311,51 @@ public class ReclamosApiController : ControllerBase
         await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, request.Aprobado);
         if (request.Aprobado)
         {
-            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de deducible");
             await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
+            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de coaseguro");
+            var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
+            var documentos = await _reclamos.GetDocumentosAsync(id);
+            var result = await _whatsApp.EnviarRecordatorioAsync(actualizado, documentos);
+            await _auditoria.RegistrarAsync(result.ok ? "AVISO_APROBACION_RECLAMO" : "ERROR_AVISO_APROBACION_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar comprobantes finales." : result.response);
         }
 
         await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, request.Aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes." : "Respuesta de aseguradora registrada.");
         return NoContent();
+    }
+
+    private static bool IsPostApprovalStage(ReclamoWhatsApp reclamo)
+    {
+        return reclamo.AseguradoraAprobado
+            || string.Equals(reclamo.Estado, "ASEGURADORA_APROBADO", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(reclamo.EstadoReclamo, "ASEGURADORA_APROBADO", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsComprobanteFinal(DocumentoDto documento)
+    {
+        var tipo = NormalizeDocumentText(documento.TipoDocumento);
+        var nombre = NormalizeDocumentText(documento.NombreArchivoOriginal);
+        var observacion = NormalizeDocumentText(documento.Observacion);
+        var combined = $"{tipo} {nombre} {observacion}";
+        return combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
+            || combined.Contains("RSA", StringComparison.Ordinal)
+            || combined.Contains("RESTITUCION", StringComparison.Ordinal)
+            || combined.Contains("COASEGURO", StringComparison.Ordinal)
+            || combined.Contains("CO ASEGURO", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeDocumentText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value.Trim().ToUpperInvariant()
+            .Replace('Á', 'A')
+            .Replace('É', 'E')
+            .Replace('Í', 'I')
+            .Replace('Ó', 'O')
+            .Replace('Ú', 'U')
+            .Replace('Ü', 'U')
+            .Replace('Ñ', 'N');
     }
 }
 
