@@ -865,8 +865,6 @@ th.col-acciones {
 .inline-alert.success {
   background: #dcfce7;
   color: #166534;
-  animation: inlineAlertFadeOut 5.5s ease forwards;
-  animation-delay: 2.5s;
 }
 
 .inline-alert.danger {
@@ -882,22 +880,6 @@ th.col-acciones {
 .inline-alert.info {
   background: #dbeafe;
   color: #1d4ed8;
-}
-
-@keyframes inlineAlertFadeOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
-    max-height: 0;
-    margin-top: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    border-width: 0;
-  }
 }
 
 .form-grid,
