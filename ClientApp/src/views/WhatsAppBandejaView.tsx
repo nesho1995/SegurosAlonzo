@@ -92,6 +92,8 @@ export function WhatsAppBandejaView() {
   const [vinculandoReclamo, setVinculandoReclamo] = useState(false)
   const [mostrarVincular, setMostrarVincular] = useState(false)
   const [documentosReclamo, setDocumentosReclamo] = useState<ClaimPendingDocument[]>([])
+  const [documentosPorReclamo, setDocumentosPorReclamo] = useState<Record<number, ClaimPendingDocument[]>>({})
+  const [reclamoSeleccionadoPorMensaje, setReclamoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
   const [documentoSeleccionadoPorMensaje, setDocumentoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
   const [observacionAdjuntoPorMensaje, setObservacionAdjuntoPorMensaje] = useState<Record<number, string>>({})
   const [guardandoDocumentoId, setGuardandoDocumentoId] = useState<number | null>(null)
@@ -132,6 +134,8 @@ export function WhatsAppBandejaView() {
     setRespuesta('')
     setMostrarVincular(false)
     setDocumentosReclamo([])
+    setDocumentosPorReclamo({})
+    setReclamoSeleccionadoPorMensaje({})
     setDocumentoSeleccionadoPorMensaje({})
     setOffsetMensajes(0)
     try {
@@ -140,6 +144,7 @@ export function WhatsAppBandejaView() {
       setMensajes(items)
       setTotalMensajes(t)
       await cargarDocumentosDelReclamo(conversacion.reclamoId)
+      await cargarReclamosSugeridosPara(conversacion)
       if (conv.noLeidos > 0) {
         await marcarLeido(conv.id)
         setConversaciones(prev => prev.map(c => c.id === conv.id ? { ...c, noLeidos: 0 } : c))
@@ -192,6 +197,7 @@ export function WhatsAppBandejaView() {
     try {
       const res = await getDocumentosReclamo(reclamoId)
       setDocumentosReclamo(res.items)
+      setDocumentosPorReclamo(prev => ({ ...prev, [reclamoId]: res.items }))
     } catch (e) {
       if (!silencioso) setMsgError(e instanceof Error ? e.message : 'Error cargando documentos del reclamo.')
       setDocumentosReclamo([])
@@ -247,17 +253,38 @@ export function WhatsAppBandejaView() {
 
   async function cargarReclamosSugeridos(query = reclamoInput) {
     if (!convSeleccionada) return
+    await cargarReclamosSugeridosPara(convSeleccionada, query)
+  }
+
+  async function cargarReclamosSugeridosPara(conversacion: ConversacionDetalle, query = '') {
     setBuscandoReclamos(true)
     try {
       const items = await buscarReclamos({
         buscar: query.trim() || undefined,
-        telefono: convSeleccionada.telefono,
+        telefono: conversacion.telefono,
       })
       setReclamosSugeridos(items)
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error buscando reclamos.')
     } finally {
       setBuscandoReclamos(false)
+    }
+  }
+
+  async function seleccionarReclamoParaMensaje(mensajeId: number, reclamoId: number) {
+    setReclamoSeleccionadoPorMensaje(prev => ({ ...prev, [mensajeId]: reclamoId }))
+    setDocumentoSeleccionadoPorMensaje(prev => {
+      const next = { ...prev }
+      delete next[mensajeId]
+      return next
+    })
+    if (!documentosPorReclamo[reclamoId]) {
+      try {
+        const res = await getDocumentosReclamo(reclamoId)
+        setDocumentosPorReclamo(prev => ({ ...prev, [reclamoId]: res.items }))
+      } catch (e) {
+        setMsgError(e instanceof Error ? e.message : 'Error cargando documentos del reclamo.')
+      }
     }
   }
 
@@ -281,8 +308,9 @@ export function WhatsAppBandejaView() {
   }
 
   async function guardarAdjuntoEnReclamo(msg: MensajeDto) {
-    if (!convSeleccionada?.reclamoId) {
-      setMsgError('Vincula un reclamo antes de guardar el adjunto.')
+    const reclamoId = reclamoSeleccionadoPorMensaje[msg.id] ?? convSeleccionada?.reclamoId
+    if (!reclamoId) {
+      setMsgError('Selecciona el reclamo destino antes de guardar el adjunto.')
       return
     }
     const documentoId = documentoSeleccionadoPorMensaje[msg.id]
@@ -294,8 +322,9 @@ export function WhatsAppBandejaView() {
     setGuardandoDocumentoId(msg.id)
     setMsgError(null)
     try {
-      const res = await guardarDocumentoMensaje(msg.id, convSeleccionada.reclamoId, documentoId, observacionAdjuntoPorMensaje[msg.id])
-      setDocumentosReclamo(res.checklist)
+      const res = await guardarDocumentoMensaje(msg.id, reclamoId, documentoId, observacionAdjuntoPorMensaje[msg.id])
+      setDocumentosPorReclamo(prev => ({ ...prev, [reclamoId]: res.checklist }))
+      if (convSeleccionada?.reclamoId === reclamoId) setDocumentosReclamo(res.checklist)
       setObservacionAdjuntoPorMensaje(prev => ({ ...prev, [msg.id]: '' }))
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error guardando documento.')
@@ -629,11 +658,13 @@ export function WhatsAppBandejaView() {
               {mensajes.map(msg => <BurbujaMensaje
                 key={msg.id}
                 msg={msg}
-                reclamoId={convSeleccionada.reclamoId}
-                documentos={documentosReclamo}
+                reclamoId={reclamoSeleccionadoPorMensaje[msg.id] ?? convSeleccionada.reclamoId}
+                reclamos={reclamosSugeridos}
+                documentos={documentosPorReclamo[reclamoSeleccionadoPorMensaje[msg.id] ?? convSeleccionada.reclamoId ?? 0] ?? documentosReclamo}
                 documentoSeleccionado={documentoSeleccionadoPorMensaje[msg.id] ?? ''}
                 observacion={observacionAdjuntoPorMensaje[msg.id] ?? ''}
                 guardando={guardandoDocumentoId === msg.id}
+                onSeleccionarReclamo={(reclamoId) => void seleccionarReclamoParaMensaje(msg.id, reclamoId)}
                 onSeleccionarDocumento={(documentoId) => setDocumentoSeleccionadoPorMensaje(prev => ({ ...prev, [msg.id]: documentoId }))}
                 onObservacion={(value) => setObservacionAdjuntoPorMensaje(prev => ({ ...prev, [msg.id]: value }))}
                 onGuardar={() => guardarAdjuntoEnReclamo(msg)}
@@ -755,20 +786,24 @@ function ConvItem({ conv, selected, onClick }: {
 function BurbujaMensaje({
   msg,
   reclamoId,
+  reclamos,
   documentos,
   documentoSeleccionado,
   observacion,
   guardando,
+  onSeleccionarReclamo,
   onSeleccionarDocumento,
   onObservacion,
   onGuardar,
 }: {
   msg: MensajeDto
   reclamoId: number | null
+  reclamos: ReclamoLinkOption[]
   documentos: ClaimPendingDocument[]
   documentoSeleccionado: number | ''
   observacion: string
   guardando: boolean
+  onSeleccionarReclamo: (reclamoId: number) => void
   onSeleccionarDocumento: (documentoId: number) => void
   onObservacion: (value: string) => void
   onGuardar: () => void
@@ -839,11 +874,29 @@ function BurbujaMensaje({
             display: 'grid', gap: 5, marginTop: 7, paddingTop: 7,
             borderTop: '1px solid #e2e8f0',
           }}>
-            {reclamoId ? (
+            {(reclamoId || reclamos.length > 0) ? (
               <>
+                <select
+                  value={reclamoId ?? ''}
+                  onChange={e => onSeleccionarReclamo(Number(e.target.value))}
+                  style={{
+                    width: '100%', border: '1px solid #cbd5e1', borderRadius: 6,
+                    padding: '5px 7px', fontSize: 12, background: '#fff',
+                  }}>
+                  <option value="">Reclamo destino...</option>
+                  {reclamoId && !reclamos.some(item => item.id === reclamoId) && (
+                    <option value={reclamoId}>Reclamo asociado #{reclamoId}</option>
+                  )}
+                  {reclamos.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.referencia} - {item.cliente}{item.placa ? ` - ${item.placa}` : ''}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={documentoSeleccionado}
                   onChange={e => onSeleccionarDocumento(Number(e.target.value))}
+                  disabled={!reclamoId}
                   style={{
                     width: '100%', border: '1px solid #cbd5e1', borderRadius: 6,
                     padding: '5px 7px', fontSize: 12, background: '#fff',
@@ -867,13 +920,13 @@ function BurbujaMensaje({
                 />
                 <button
                   onClick={onGuardar}
-                  disabled={guardando || !documentoSeleccionado}
+                  disabled={guardando || !reclamoId || !documentoSeleccionado}
                   style={{
                     border: 'none', borderRadius: 6,
-                    background: guardando || !documentoSeleccionado ? '#e2e8f0' : '#0f766e',
-                    color: guardando || !documentoSeleccionado ? '#64748b' : '#fff',
+                    background: guardando || !reclamoId || !documentoSeleccionado ? '#e2e8f0' : '#0f766e',
+                    color: guardando || !reclamoId || !documentoSeleccionado ? '#64748b' : '#fff',
                     padding: '6px 8px', fontSize: 12, fontWeight: 600,
-                    cursor: guardando || !documentoSeleccionado ? 'not-allowed' : 'pointer',
+                    cursor: guardando || !reclamoId || !documentoSeleccionado ? 'not-allowed' : 'pointer',
                   }}>
                   {guardando ? 'Guardando...' : 'Guardar en reclamo y marcar check'}
                 </button>
