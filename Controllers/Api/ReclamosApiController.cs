@@ -230,6 +230,39 @@ public class ReclamosApiController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:int}/documentos/{documentoId:int}/excepcion")]
+    [Authorize(Policy = Permissions.DocumentosSubir)]
+    public async Task<IActionResult> AceptarDocumentoConExcepcion(int id, int documentoId, [FromBody] DocumentoExcepcionRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        var yaEstabaCompleto = await _reclamos.TodosDocumentosRecibidosAsync(id);
+        var result = await _reclamos.AceptarDocumentoConExcepcionAsync(documentoId, id, request.Observacion);
+        if (!result.ok)
+            return BadRequest(new { error = result.response });
+
+        var completo = await _reclamos.TodosDocumentosRecibidosAsync(id);
+        await _reclamos.UpdateEstadoAsync(id, completo ? "COMPLETO" : "EN_SEGUIMIENTO");
+        if (completo && !yaEstabaCompleto)
+        {
+            var aviso = await _whatsApp.EnviarDocumentosRecibidosAsync(reclamo);
+            await _auditoria.RegistrarAsync(aviso.ok ? "AVISO_DOCUMENTOS_RECIBIDOS" : "ERROR_AVISO_DOCUMENTOS_RECIBIDOS", "RECLAMO", id, aviso.ok ? "Cliente notificado por documentos completos." : aviso.response);
+            if (!string.IsNullOrWhiteSpace(reclamo.CorreoAseguradoraPrincipal))
+            {
+                var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
+                var soloFinales = IsPostApprovalStage(reclamo);
+                var documentosEnviar = soloFinales ? documentos.Where(IsComprobanteFinal).ToList() : documentos;
+                var correo = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, reclamo.CorreoAseguradoraPrincipal, documentosEnviar, reclamo.CorreoAseguradoraCopia, soloFinales);
+                await _auditoria.RegistrarAsync(correo.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA_AUTO" : "ERROR_DOCUMENTOS_ASEGURADORA_AUTO", "RECLAMO", id, correo.ok ? $"Documentos enviados a {reclamo.CorreoAseguradoraPrincipal}." : correo.response);
+            }
+        }
+
+        await _auditoria.RegistrarAsync("ACEPTAR_DOCUMENTO_EXCEPCION", "RECLAMO", id, $"Documento {documentoId} aceptado con excepcion: {request.Observacion}");
+        return Ok(new { result.ok, result.response, completo });
+    }
+
     [HttpPost("{id:int}/enviar-aseguradora")]
     [Authorize(Policy = Permissions.ReclamosEnviar)]
     public async Task<IActionResult> EnviarAseguradora(int id, [FromBody] EnviarAseguradoraRequest request)
@@ -360,6 +393,7 @@ public class ReclamosApiController : ControllerBase
 }
 
 public sealed record ActualizarDocumentoReclamoRequest(bool Recibido);
+public sealed record DocumentoExcepcionRequest(string? Observacion);
 public sealed record EnviarAseguradoraRequest(string? CorreoAseguradora, string? CorreoCopia);
 public sealed record CorreosAseguradoraRequest(string? Principal, string? Copia);
 public sealed record RespuestaAseguradoraRequest(string? Respuesta, bool Aprobado);

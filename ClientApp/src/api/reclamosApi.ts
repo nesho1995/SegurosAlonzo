@@ -18,6 +18,13 @@ export function updateReclamoDocumento(id: number, documentoId: number, recibido
   return requestJson(`/api/reclamos/${id}/documentos/${documentoId}`, 'PUT', { recibido })
 }
 
+export function aceptarDocumentoConExcepcion(id: number, documentoId: number, observacion: string) {
+  return postJson<{ ok: boolean; response: string; completo: boolean }>(
+    `/api/reclamos/${id}/documentos/${documentoId}/excepcion`,
+    { observacion }
+  )
+}
+
 export function solicitarDocumentosReclamo(id: number) {
   return postJson(`/api/reclamos/${id}/solicitar-documentos`, {})
 }
@@ -52,4 +59,10 @@ export type ClaimPendingDocument = {
   documento: string
   recibido: boolean
   fechaRecibido?: string
+  cantidadRequerida: number
+  minimoAceptable: number
+  permiteExcepcion: boolean
+  excepcionAceptada: boolean
+  excepcionObservacion?: string
+  adjuntosRecibidos: number
 }

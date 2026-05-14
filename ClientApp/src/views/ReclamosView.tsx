@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, FileText, Send } from 'lucide-react'
 import {
+  aceptarDocumentoConExcepcion,
   enviarDocumentosAseguradora,
   enviarRecordatorioReclamo,
   enviarWhatsAppReclamo,
@@ -44,6 +45,16 @@ export function ReclamosView() {
   const [correoCopia, setCorreoCopia] = useState('')
   const [respuestaAseguradora, setRespuestaAseguradora] = useState('')
   const [aseguradoraAprobado, setAseguradoraAprobado] = useState(false)
+
+  async function aceptarExcepcionDocumento(doc: ClaimPendingDocument) {
+    if (!selected) return
+    const observacion = window.prompt(`Motivo para aceptar ${reclamoDocumentLabel(doc.documento)} con ${doc.adjuntosRecibidos} de ${doc.cantidadRequerida} adjuntos:`)
+    if (!observacion?.trim()) return
+    await runAction(
+      () => aceptarDocumentoConExcepcion(selected.id, doc.id, observacion.trim()),
+      'Documento aceptado con excepcion.'
+    )
+  }
   const [hideList, setHideList] = useState(false)
 
   async function load() {
@@ -212,7 +223,7 @@ export function ReclamosView() {
                     {documentosPendientes.length === 0 ? (
                       <div className="empty">No hay requisitos pendientes registrados.</div>
                     ) : documentosPendientes.map((doc) => (
-                      <label className="check-field" key={doc.id}>
+                      <div className="check-field" key={doc.id}>
                         <input
                           type="checkbox"
                           checked={doc.recibido}
@@ -221,8 +232,24 @@ export function ReclamosView() {
                         />
                         <span>
                           {reclamoDocumentLabel(doc.documento)}
+                          {doc.cantidadRequerida > 1 && (
+                            <small style={{ display: 'block', color: '#64748b', fontWeight: 500 }}>
+                              Adjuntos: {doc.adjuntosRecibidos}/{doc.cantidadRequerida}
+                              {doc.excepcionAceptada && doc.excepcionObservacion ? ` - Excepcion: ${doc.excepcionObservacion}` : ''}
+                            </small>
+                          )}
                         </span>
-                      </label>
+                        {doc.permiteExcepcion && !doc.recibido && doc.adjuntosRecibidos >= doc.minimoAceptable && (
+                          <button
+                            className="icon-button secondary"
+                            type="button"
+                            disabled={actionBusy}
+                            onClick={() => void aceptarExcepcionDocumento(doc)}
+                          >
+                            Aceptar con excepcion
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                   <div className="inline-alert warning">Checklist: {checklist.length} requisitos / pendientes: {checklistPendientes}</div>

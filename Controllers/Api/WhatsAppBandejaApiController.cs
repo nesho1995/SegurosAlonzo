@@ -246,7 +246,7 @@ public class WhatsAppBandejaApiController : ControllerBase
                     req.Observacion);
 
                 var yaEstabaCompleto = await _reclamos.TodosDocumentosRecibidosAsync(req.ReclamoId);
-                await _reclamos.ActualizarDocumentoAsync(seleccionado.Id, req.ReclamoId, true);
+                await _reclamos.ActualizarDocumentoSegunAdjuntosAsync(seleccionado.Id, req.ReclamoId);
                 var completo = await _reclamos.TodosDocumentosRecibidosAsync(req.ReclamoId);
                 await _reclamos.UpdateEstadoAsync(req.ReclamoId, completo ? "COMPLETO" : "EN_SEGUIMIENTO");
 

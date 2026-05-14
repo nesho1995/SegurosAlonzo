@@ -70,6 +70,12 @@ export interface ClaimPendingDocument {
   documento: string
   recibido: boolean
   fechaRecibido?: string
+  cantidadRequerida: number
+  minimoAceptable: number
+  permiteExcepcion: boolean
+  excepcionAceptada: boolean
+  excepcionObservacion?: string
+  adjuntosRecibidos: number
 }
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {

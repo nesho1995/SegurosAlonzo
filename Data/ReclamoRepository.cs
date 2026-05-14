@@ -171,16 +171,20 @@ public class ReclamoRepository
 
         const string insertSql = @"
             INSERT INTO reclamo_documentos
-            (reclamo_id, documento, recibido)
+            (reclamo_id, documento, recibido, cantidad_requerida, minimo_aceptable, permite_excepcion)
             VALUES
-            (@ReclamoId, @Documento, 0);";
+            (@ReclamoId, @Documento, 0, @CantidadRequerida, @MinimoAceptable, @PermiteExcepcion);";
 
         foreach (var documento in documentos)
         {
+            var esCotizacion = IsCotizacionDocumento(documento);
             await cn.ExecuteAsync(insertSql, new
             {
                 ReclamoId = reclamoId,
-                Documento = documento
+                Documento = documento,
+                CantidadRequerida = esCotizacion ? 2 : 1,
+                MinimoAceptable = 1,
+                PermiteExcepcion = esCotizacion
             });
         }
     }
@@ -196,10 +200,23 @@ public class ReclamoRepository
                 reclamo_id ReclamoId,
                 documento Documento,
                 recibido Recibido,
-                fecha_recibido FechaRecibido
-            FROM reclamo_documentos
-            WHERE reclamo_id = @reclamoId
-            ORDER BY id;";
+                fecha_recibido FechaRecibido,
+                cantidad_requerida CantidadRequerida,
+                minimo_aceptable MinimoAceptable,
+                permite_excepcion PermiteExcepcion,
+                excepcion_aceptada ExcepcionAceptada,
+                excepcion_observacion ExcepcionObservacion,
+                (
+                    SELECT COUNT(1)
+                    FROM documentos d
+                    WHERE d.activo = 1
+                      AND d.entidad_tipo = 'RECLAMO'
+                      AND d.entidad_id = rd.reclamo_id
+                      AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                ) AdjuntosRecibidos
+            FROM reclamo_documentos rd
+            WHERE rd.reclamo_id = @reclamoId
+            ORDER BY rd.id;";
 
         return await cn.QueryAsync<ReclamoDocumento>(sql, new { reclamoId });
     }
@@ -220,6 +237,105 @@ public class ReclamoRepository
             );";
 
         await cn.ExecuteAsync(sql, new { reclamoId, documento = documento.Trim() });
+        if (IsCotizacionDocumento(documento))
+        {
+            await cn.ExecuteAsync(@"
+                UPDATE reclamo_documentos
+                SET cantidad_requerida = 2,
+                    minimo_aceptable = 1,
+                    permite_excepcion = 1
+                WHERE reclamo_id = @reclamoId
+                  AND LOWER(documento) = LOWER(@documento);",
+                new { reclamoId, documento = documento.Trim() });
+        }
+    }
+
+    public async Task ActualizarDocumentoSegunAdjuntosAsync(int documentoId, int reclamoId)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamo_documentos rd
+            SET recibido = CASE
+                    WHEN (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.cantidad_requerida THEN 1
+                    WHEN rd.excepcion_aceptada = 1 THEN 1
+                    ELSE 0
+                END,
+                fecha_recibido = CASE
+                    WHEN (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.cantidad_requerida OR rd.excepcion_aceptada = 1 THEN IFNULL(rd.fecha_recibido, NOW())
+                    ELSE NULL
+                END
+            WHERE rd.id = @documentoId
+              AND rd.reclamo_id = @reclamoId;";
+
+        await cn.ExecuteAsync(sql, new { documentoId, reclamoId });
+    }
+
+    public async Task<(bool ok, string response)> AceptarDocumentoConExcepcionAsync(int documentoId, int reclamoId, string? observacion)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        var doc = await cn.QueryFirstOrDefaultAsync<ReclamoDocumento>(@"
+            SELECT
+                rd.id Id,
+                rd.reclamo_id ReclamoId,
+                rd.documento Documento,
+                rd.recibido Recibido,
+                rd.fecha_recibido FechaRecibido,
+                rd.cantidad_requerida CantidadRequerida,
+                rd.minimo_aceptable MinimoAceptable,
+                rd.permite_excepcion PermiteExcepcion,
+                rd.excepcion_aceptada ExcepcionAceptada,
+                rd.excepcion_observacion ExcepcionObservacion,
+                (
+                    SELECT COUNT(1)
+                    FROM documentos d
+                    WHERE d.activo = 1
+                      AND d.entidad_tipo = 'RECLAMO'
+                      AND d.entidad_id = rd.reclamo_id
+                      AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                ) AdjuntosRecibidos
+            FROM reclamo_documentos rd
+            WHERE rd.id = @documentoId
+              AND rd.reclamo_id = @reclamoId;",
+            new { documentoId, reclamoId });
+
+        if (doc is null)
+            return (false, "Documento del checklist no encontrado.");
+        if (!doc.PermiteExcepcion)
+            return (false, "Este documento no permite cierre con excepcion.");
+        if (doc.AdjuntosRecibidos < doc.MinimoAceptable)
+            return (false, $"Se requiere al menos {doc.MinimoAceptable} adjunto antes de aceptar excepcion.");
+        if (string.IsNullOrWhiteSpace(observacion))
+            return (false, "Ingresa el motivo de la excepcion.");
+
+        await cn.ExecuteAsync(@"
+            UPDATE reclamo_documentos
+            SET recibido = 1,
+                fecha_recibido = IFNULL(fecha_recibido, NOW()),
+                excepcion_aceptada = 1,
+                excepcion_observacion = @observacion
+            WHERE id = @documentoId
+              AND reclamo_id = @reclamoId;",
+            new { documentoId, reclamoId, observacion = observacion.Trim() });
+
+        return (true, "Documento aceptado con excepcion.");
     }
 
     public async Task ActualizarDocumentoAsync(int documentoId, int reclamoId, bool recibido)
@@ -583,5 +699,26 @@ public class ReclamoRepository
                 ('AUTO','TARJETA_CIRCULACION',1,1),
                 ('AUTO','COTIZACION_TALLER',1,1)
             ON DUPLICATE KEY UPDATE requerido = VALUES(requerido), activo = VALUES(activo);");
+
+        await cn.ExecuteAsync(@"
+            ALTER TABLE reclamo_documentos
+                ADD COLUMN IF NOT EXISTS cantidad_requerida INT NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS minimo_aceptable INT NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS permite_excepcion TINYINT(1) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS excepcion_aceptada TINYINT(1) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS excepcion_observacion TEXT NULL;
+
+            UPDATE reclamo_documentos
+            SET cantidad_requerida = 2,
+                minimo_aceptable = 1,
+                permite_excepcion = 1
+            WHERE LOWER(documento) LIKE '%cotizacion%'
+               OR LOWER(documento) LIKE '%cotizaciones%';");
+    }
+
+    private static bool IsCotizacionDocumento(string? documento)
+    {
+        return !string.IsNullOrWhiteSpace(documento)
+            && documento.Contains("cotizacion", StringComparison.OrdinalIgnoreCase);
     }
 }

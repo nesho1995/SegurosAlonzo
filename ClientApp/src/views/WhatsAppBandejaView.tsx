@@ -905,6 +905,7 @@ function BurbujaMensaje({
                   {documentos.map(doc => (
                     <option key={doc.id} value={doc.id}>
                       {doc.recibido ? 'Recibido - ' : ''}{reclamoDocumentLabel(doc.documento)}
+                      {doc.cantidadRequerida > 1 ? ` (${doc.adjuntosRecibidos}/${doc.cantidadRequerida})` : ''}
                     </option>
                   ))}
                 </select>
