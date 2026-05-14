@@ -283,6 +283,17 @@ namespace ReclamosWhatsApp.Services
                 new { userId, currentSessionId });
         }
 
+        public async Task RevokeExpiredSessionsAsync()
+        {
+            using var connection = _db.CreateConnection();
+            await EnsureSecuritySchemaAsync(connection);
+            await connection.ExecuteAsync(@"
+                UPDATE user_sessions
+                SET revoked_at = UTC_TIMESTAMP()
+                WHERE revoked_at IS NULL
+                  AND expires_at <= UTC_TIMESTAMP();");
+        }
+
         /// <summary>Llamar una sola vez al arranque desde Program.cs.</summary>
         public async Task EnsureSchemaPublicAsync()
         {

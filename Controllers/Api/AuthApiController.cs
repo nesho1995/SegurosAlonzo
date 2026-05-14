@@ -143,7 +143,8 @@ public class AuthApiController : ControllerBase
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, role),
-            new("sid", sessionId)
+            new("sid", sessionId),
+            new("session_created_utc", DateTime.UtcNow.ToString("O"))
         };
         claims.AddRange(effectivePermissions.Select(permission => new Claim("perm", permission)));
 

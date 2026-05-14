@@ -13,6 +13,8 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var isDev = builder.Environment.IsDevelopment();
+var sessionIdleTimeout = TimeSpan.FromHours(8);
+var sessionAbsoluteLifetime = TimeSpan.FromHours(12);
 
 builder.Services.Configure<HostOptions>(options =>
 {
@@ -66,7 +68,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             ? CookieSecurePolicy.SameAsRequest   // local HTTP sin certificado
             : CookieSecurePolicy.Always;         // producción siempre HTTPS
         options.SlidingExpiration = true;
-        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.ExpireTimeSpan = sessionIdleTimeout;
         options.Events.OnRedirectToLogin = context =>
         {
             if (context.Request.Path.StartsWithSegments("/api"))
@@ -83,6 +85,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         {
             var userIdRaw = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
             var sessionId = context.Principal?.FindFirstValue("sid");
+            var sessionCreatedRaw = context.Principal?.FindFirstValue("session_created_utc");
             if (!int.TryParse(userIdRaw, out var userId) || string.IsNullOrWhiteSpace(sessionId))
             {
                 context.RejectPrincipal();
@@ -91,10 +94,19 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             }
 
             var users = context.HttpContext.RequestServices.GetRequiredService<UserRepository>();
+            if (!DateTime.TryParse(sessionCreatedRaw, null, System.Globalization.DateTimeStyles.RoundtripKind, out var sessionCreatedUtc)
+                || DateTime.UtcNow - sessionCreatedUtc.ToUniversalTime() > sessionAbsoluteLifetime)
+            {
+                await users.RevokeSessionAsync(userId, sessionId);
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
             var isValid = await users.TouchSessionAsync(
                 userId,
                 sessionId,
-                DateTime.UtcNow.Add(options.ExpireTimeSpan));
+                DateTime.UtcNow.Add(sessionIdleTimeout));
 
             if (!isValid)
             {
@@ -276,6 +288,7 @@ using (var scope = app.Services.CreateScope())
     // Inicializar schema de seguridad (Users, user_sessions) al arranque
     var users = scope.ServiceProvider.GetRequiredService<UserRepository>();
     await users.EnsureSchemaPublicAsync();
+    await users.RevokeExpiredSessionsAsync();
 
     // Asegurar que las columnas opcionales existan antes de sincronizar estados
     var cartera = scope.ServiceProvider.GetRequiredService<CarteraRepository>();

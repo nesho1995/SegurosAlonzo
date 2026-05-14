@@ -75,12 +75,26 @@ public class AuthController : Controller
         }
 
         await _userRepository.ResetFailedLoginAsync(user.Id);
+        var activeSessions = await _userRepository.CountActiveSessionsAsync(user.Id);
+        if (activeSessions >= 2)
+        {
+            await _userRepository.RevokeOldestSessionAsync(user.Id);
+            await _auditoria.RegistrarAsync("SESION_ANTIGUA_REVOCADA", "USUARIO", user.Id, "Sesion mas antigua revocada al superar limite de 2 sesiones activas.");
+        }
+
+        var sessionId = await _userRepository.CreateSessionAsync(
+            user.Id,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(),
+            DateTime.UtcNow.AddHours(8));
         var role = Permissions.NormalizeRole(user.Role?.Name);
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, role)
+            new(ClaimTypes.Role, role),
+            new("sid", sessionId),
+            new("session_created_utc", DateTime.UtcNow.ToString("O"))
         };
         claims.AddRange(Permissions.ForRole(role).Select(permission => new Claim("perm", permission)));
 
