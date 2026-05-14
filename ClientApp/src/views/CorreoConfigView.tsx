@@ -15,6 +15,7 @@ export function CorreoConfigView() {
   const [bandeja, setBandeja] = useState<CorreoRevisionItem[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
 
   async function load() {
     setError(null)
@@ -44,16 +45,64 @@ export function CorreoConfigView() {
 
   async function saveImapConfig() {
     if (!imapConfig) return
-    await saveReclamoCorreoConfig(imapConfig)
-    setMessage('Correo de lectura guardado.')
-    await load()
+    await runAction('save-imap', async () => {
+      await saveReclamoCorreoConfig(imapConfig)
+      setMessage('Correo de lectura guardado.')
+      await load()
+    })
   }
 
   async function saveSmtpConfig() {
     if (!smtpConfig) return
-    await updateSmtpConfig(smtpConfig)
-    setMessage('Correo de produccion guardado.')
-    await load()
+    await runAction('save-smtp', async () => {
+      await updateSmtpConfig(smtpConfig)
+      setMessage('Correo de produccion guardado.')
+      await load()
+    })
+  }
+
+  async function runAction(action: string, callback: () => Promise<void>) {
+    if (busyAction) return
+    setBusyAction(action)
+    setError(null)
+    setMessage(null)
+    try {
+      await callback()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo completar la accion.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function testImap() {
+    await runAction('test-imap', async () => {
+      await testReclamoCorreoConnection()
+      setMessage('Conexion IMAP exitosa.')
+    })
+  }
+
+  async function testSmtp() {
+    await runAction('test-smtp', async () => {
+      await probarSmtp()
+      setMessage('Conexion SMTP exitosa.')
+    })
+  }
+
+  async function processNow() {
+    await runAction('process-now', async () => {
+      await processReclamosNow()
+      await load()
+      setMessage('Procesamiento ejecutado.')
+    })
+  }
+
+  async function recoverNow() {
+    await runAction('recover-now', async () => {
+      await recoveryReclamos(72)
+      await load()
+      setMessage('Modo recuperacion ejecutado.')
+    })
   }
 
   if (!imapConfig || !smtpConfig) return <LoadingCard text="Cargando configuracion de correo..." />
@@ -79,10 +128,10 @@ export function CorreoConfigView() {
             <Field label="Correo de lectura" value={imapConfig.username} onChange={(v) => setImapConfig({ ...imapConfig, username: v })} />
             <Field label={`Password IMAP${imapConfig.passwordMasked ? ' configurado' : ''}`} type="password" value={imapConfig.password || ''} onChange={(v) => setImapConfig({ ...imapConfig, password: v })} />
             <div className="form-actions">
-              <button className="primary-button" onClick={() => void saveImapConfig()}>Guardar lectura</button>
-              <button className="icon-button secondary" onClick={() => void testReclamoCorreoConnection().then(() => setMessage('Conexion IMAP exitosa.')).catch((e) => setError(e.message))}>Probar IMAP</button>
-              <button className="icon-button secondary" onClick={() => void processReclamosNow().then(() => load())}>Procesar ahora</button>
-              <button className="icon-button secondary" onClick={() => void recoveryReclamos(72).then(() => load())}>Modo recuperacion 72h</button>
+              <button className="primary-button" disabled={!!busyAction} onClick={() => void saveImapConfig()}>{busyAction === 'save-imap' ? 'Guardando...' : 'Guardar lectura'}</button>
+              <button className="icon-button secondary" disabled={!!busyAction} onClick={() => void testImap()}>{busyAction === 'test-imap' ? 'Probando...' : 'Probar IMAP'}</button>
+              <button className="icon-button secondary" disabled={!!busyAction} onClick={() => void processNow()}>{busyAction === 'process-now' ? 'Procesando...' : 'Procesar ahora'}</button>
+              <button className="icon-button secondary" disabled={!!busyAction} onClick={() => void recoverNow()}>{busyAction === 'recover-now' ? 'Procesando...' : 'Modo recuperacion 72h'}</button>
             </div>
           </div>
           {status && (
@@ -105,8 +154,8 @@ export function CorreoConfigView() {
             <Field label="Remitente" value={smtpConfig.fromAddress} onChange={(v) => setSmtpConfig({ ...smtpConfig, fromAddress: v })} />
             <Field label="Nombre remitente" value={smtpConfig.fromName} onChange={(v) => setSmtpConfig({ ...smtpConfig, fromName: v })} />
             <div className="form-actions">
-              <button className="primary-button" onClick={() => void saveSmtpConfig()}>Guardar produccion</button>
-              <button className="icon-button secondary" onClick={() => void probarSmtp().then(() => setMessage('Conexion SMTP exitosa.')).catch((e) => setError(e.message))}>Probar SMTP</button>
+              <button className="primary-button" disabled={!!busyAction} onClick={() => void saveSmtpConfig()}>{busyAction === 'save-smtp' ? 'Guardando...' : 'Guardar produccion'}</button>
+              <button className="icon-button secondary" disabled={!!busyAction} onClick={() => void testSmtp()}>{busyAction === 'test-smtp' ? 'Probando...' : 'Probar SMTP'}</button>
             </div>
           </div>
         </article>
