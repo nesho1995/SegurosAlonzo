@@ -96,6 +96,7 @@ export function WhatsAppBandejaView() {
   const [reclamoSeleccionadoPorMensaje, setReclamoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
   const [documentoSeleccionadoPorMensaje, setDocumentoSeleccionadoPorMensaje] = useState<Record<number, number>>({})
   const [observacionAdjuntoPorMensaje, setObservacionAdjuntoPorMensaje] = useState<Record<number, string>>({})
+  const [adjuntoGuardadoPorMensaje, setAdjuntoGuardadoPorMensaje] = useState<Record<number, boolean>>({})
   const [guardandoDocumentoId, setGuardandoDocumentoId] = useState<number | null>(null)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -137,6 +138,7 @@ export function WhatsAppBandejaView() {
     setDocumentosPorReclamo({})
     setReclamoSeleccionadoPorMensaje({})
     setDocumentoSeleccionadoPorMensaje({})
+    setAdjuntoGuardadoPorMensaje({})
     setOffsetMensajes(0)
     try {
       const { conversacion, items, total: t } = await getMensajes(conv.id, { limit: LIMIT, offset: 0 })
@@ -326,6 +328,7 @@ export function WhatsAppBandejaView() {
       setDocumentosPorReclamo(prev => ({ ...prev, [reclamoId]: res.checklist }))
       if (convSeleccionada?.reclamoId === reclamoId) setDocumentosReclamo(res.checklist)
       setObservacionAdjuntoPorMensaje(prev => ({ ...prev, [msg.id]: '' }))
+      setAdjuntoGuardadoPorMensaje(prev => ({ ...prev, [msg.id]: true }))
     } catch (e) {
       setMsgError(e instanceof Error ? e.message : 'Error guardando documento.')
     } finally {
@@ -663,6 +666,7 @@ export function WhatsAppBandejaView() {
                 documentos={documentosPorReclamo[reclamoSeleccionadoPorMensaje[msg.id] ?? convSeleccionada.reclamoId ?? 0] ?? documentosReclamo}
                 documentoSeleccionado={documentoSeleccionadoPorMensaje[msg.id] ?? ''}
                 observacion={observacionAdjuntoPorMensaje[msg.id] ?? ''}
+                guardado={adjuntoGuardadoPorMensaje[msg.id] ?? false}
                 guardando={guardandoDocumentoId === msg.id}
                 onSeleccionarReclamo={(reclamoId) => void seleccionarReclamoParaMensaje(msg.id, reclamoId)}
                 onSeleccionarDocumento={(documentoId) => setDocumentoSeleccionadoPorMensaje(prev => ({ ...prev, [msg.id]: documentoId }))}
@@ -790,6 +794,7 @@ function BurbujaMensaje({
   documentos,
   documentoSeleccionado,
   observacion,
+  guardado,
   guardando,
   onSeleccionarReclamo,
   onSeleccionarDocumento,
@@ -802,6 +807,7 @@ function BurbujaMensaje({
   documentos: ClaimPendingDocument[]
   documentoSeleccionado: number | ''
   observacion: string
+  guardado: boolean
   guardando: boolean
   onSeleccionarReclamo: (reclamoId: number) => void
   onSeleccionarDocumento: (documentoId: number) => void
@@ -921,15 +927,15 @@ function BurbujaMensaje({
                 />
                 <button
                   onClick={onGuardar}
-                  disabled={guardando || !reclamoId || !documentoSeleccionado}
+                  disabled={guardado || guardando || !reclamoId || !documentoSeleccionado}
                   style={{
                     border: 'none', borderRadius: 6,
-                    background: guardando || !reclamoId || !documentoSeleccionado ? '#e2e8f0' : '#0f766e',
-                    color: guardando || !reclamoId || !documentoSeleccionado ? '#64748b' : '#fff',
+                    background: guardado || guardando || !reclamoId || !documentoSeleccionado ? '#e2e8f0' : '#0f766e',
+                    color: guardado || guardando || !reclamoId || !documentoSeleccionado ? '#64748b' : '#fff',
                     padding: '6px 8px', fontSize: 12, fontWeight: 600,
-                    cursor: guardando || !reclamoId || !documentoSeleccionado ? 'not-allowed' : 'pointer',
+                    cursor: guardado || guardando || !reclamoId || !documentoSeleccionado ? 'not-allowed' : 'pointer',
                   }}>
-                  {guardando ? 'Guardando...' : 'Guardar en reclamo y marcar check'}
+                  {guardado ? 'Adjunto guardado' : guardando ? 'Guardando...' : 'Guardar en reclamo y marcar check'}
                 </button>
               </>
             ) : (

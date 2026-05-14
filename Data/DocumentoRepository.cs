@@ -92,6 +92,20 @@ public class DocumentoRepository
         await cn.ExecuteAsync("UPDATE documentos SET activo = 0 WHERE id = @id;", new { id });
     }
 
+    public async Task DeleteActiveByEntidadAndTipoAsync(string entidadTipo, int entidadId, string tipoDocumento)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+        await cn.ExecuteAsync(@"
+            UPDATE documentos
+            SET activo = 0
+            WHERE entidad_tipo = @entidadTipo
+              AND entidad_id = @entidadId
+              AND UPPER(tipo_documento) = UPPER(@tipoDocumento)
+              AND activo = 1;",
+            new { entidadTipo, entidadId, tipoDocumento });
+    }
+
     public async Task UpdateObservacionAsync(int id, string? observacion)
     {
         await EnsureSchemaAsync();

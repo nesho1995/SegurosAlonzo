@@ -16,12 +16,14 @@ public class DocumentosApiController : ControllerBase
 {
     private readonly DocumentoRepository _documentos;
     private readonly DocumentoStorageService _storage;
+    private readonly ReclamoRepository _reclamos;
     private readonly AuditoriaService _auditoria;
 
-    public DocumentosApiController(DocumentoRepository documentos, DocumentoStorageService storage, AuditoriaService auditoria)
+    public DocumentosApiController(DocumentoRepository documentos, DocumentoStorageService storage, ReclamoRepository reclamos, AuditoriaService auditoria)
     {
         _documentos = documentos;
         _storage = storage;
+        _reclamos = reclamos;
         _auditoria = auditoria;
     }
 
@@ -118,7 +120,14 @@ public class DocumentosApiController : ControllerBase
     {
         try
         {
+            var documento = await _documentos.GetByIdAsync(id);
             await _storage.EliminarAsync(id);
+            if (documento is not null && string.Equals(documento.EntidadTipo, "RECLAMO", StringComparison.OrdinalIgnoreCase))
+            {
+                await _reclamos.RecalcularDocumentoPorTipoAsync(documento.EntidadId, documento.TipoDocumento);
+                var completo = await _reclamos.TodosDocumentosRecibidosAsync(documento.EntidadId);
+                await _reclamos.UpdateEstadoAsync(documento.EntidadId, completo ? "COMPLETO" : "EN_SEGUIMIENTO");
+            }
             await _auditoria.RegistrarAsync("ELIMINAR_DOCUMENTO", "DOCUMENTO", id, "Documento eliminado.");
             return NoContent();
         }

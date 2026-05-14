@@ -286,6 +286,79 @@ public class ReclamoRepository
         await cn.ExecuteAsync(sql, new { documentoId, reclamoId });
     }
 
+    public async Task RecalcularDocumentoPorTipoAsync(int reclamoId, string tipoDocumento)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamo_documentos rd
+            SET recibido = CASE
+                    WHEN (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.cantidad_requerida THEN 1
+                    WHEN rd.excepcion_aceptada = 1 AND (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.minimo_aceptable THEN 1
+                    ELSE 0
+                END,
+                fecha_recibido = CASE
+                    WHEN (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.cantidad_requerida
+                    OR (rd.excepcion_aceptada = 1 AND (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) >= rd.minimo_aceptable) THEN IFNULL(rd.fecha_recibido, NOW())
+                    ELSE NULL
+                END,
+                excepcion_aceptada = CASE
+                    WHEN rd.excepcion_aceptada = 1 AND (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) < rd.minimo_aceptable THEN 0
+                    ELSE rd.excepcion_aceptada
+                END,
+                excepcion_observacion = CASE
+                    WHEN rd.excepcion_aceptada = 1 AND (
+                        SELECT COUNT(1)
+                        FROM documentos d
+                        WHERE d.activo = 1
+                          AND d.entidad_tipo = 'RECLAMO'
+                          AND d.entidad_id = rd.reclamo_id
+                          AND UPPER(d.tipo_documento) = UPPER(rd.documento)
+                    ) < rd.minimo_aceptable THEN NULL
+                    ELSE rd.excepcion_observacion
+                END
+            WHERE rd.reclamo_id = @reclamoId
+              AND UPPER(rd.documento) = UPPER(@tipoDocumento);";
+
+        await cn.ExecuteAsync(sql, new { reclamoId, tipoDocumento });
+    }
+
     public async Task<(bool ok, string response)> AceptarDocumentoConExcepcionAsync(int documentoId, int reclamoId, string? observacion)
     {
         await EnsureSchemaAsync();

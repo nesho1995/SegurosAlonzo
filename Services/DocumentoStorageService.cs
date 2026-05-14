@@ -66,6 +66,7 @@ public class DocumentoStorageService
         var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
         var nombreOriginal = CleanOriginalFileName(Path.GetFileName(archivo.FileName));
         var tipo = string.IsNullOrWhiteSpace(tipoDocumento) ? "OTRO" : tipoDocumento.Trim().ToUpperInvariant();
+        await ReemplazarSiDocumentoUnicoAsync(entidadTipo, entidadId, tipo);
         var baseFolder = CleanRelativeRoot(_configuration["Documentos:CarpetaBase"] ?? "storage");
         var folderEntidad = CarpetasPorEntidad[entidadTipo];
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
@@ -148,6 +149,7 @@ public class DocumentoStorageService
             throw new InvalidOperationException("El tipo de archivo no coincide con la extension.");
 
         var tipo = string.IsNullOrWhiteSpace(tipoDocumento) ? "OTRO" : tipoDocumento.Trim().ToUpperInvariant();
+        await ReemplazarSiDocumentoUnicoAsync(entidadTipo, entidadId, tipo);
         var baseFolder = CleanRelativeRoot(_configuration["Documentos:CarpetaBase"] ?? "storage");
         var folderEntidad = CarpetasPorEntidad[entidadTipo];
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
@@ -351,6 +353,22 @@ public class DocumentoStorageService
             .Select(x => x.StartsWith('.') ? x.ToLowerInvariant() : $".{x.ToLowerInvariant()}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return parsed.Count == 0 ? ExtensionesPermitidasDefault : parsed;
+    }
+
+    private async Task ReemplazarSiDocumentoUnicoAsync(string entidadTipo, int entidadId, string tipoDocumento)
+    {
+        if (!string.Equals(entidadTipo, "RECLAMO", StringComparison.OrdinalIgnoreCase))
+            return;
+        if (EsDocumentoMultiplePermitido(tipoDocumento))
+            return;
+
+        await _documentos.DeleteActiveByEntidadAndTipoAsync(entidadTipo, entidadId, tipoDocumento);
+    }
+
+    private static bool EsDocumentoMultiplePermitido(string? tipoDocumento)
+    {
+        return !string.IsNullOrWhiteSpace(tipoDocumento)
+            && tipoDocumento.Contains("COTIZACION", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ExtensionFromMime(string contentType)
