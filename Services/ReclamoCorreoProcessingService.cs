@@ -180,6 +180,9 @@ public class ReclamoCorreoProcessingService
         if (analysis.Aprobado || analysis.MencionaRsa)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de RSA (restitucion de suma asegurada)");
 
+        if (analysis.SolicitaMasDocumentos)
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Documento adicional solicitado por aseguradora");
+
         var acciones = new List<string> { $"Respuesta asociada al reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString()}." };
         if (analysis.Aprobado)
             acciones.Add("Se marco como aprobado por aseguradora.");
@@ -187,6 +190,8 @@ public class ReclamoCorreoProcessingService
             acciones.Add("Se habilito seguimiento de pago de deducible.");
         if (analysis.MencionaRsa)
             acciones.Add("Se habilito seguimiento de pago de RSA.");
+        if (analysis.SolicitaMasDocumentos)
+            acciones.Add("La aseguradora solicito documento o informacion adicional.");
 
         estado.ReclamosValidos++;
         await RegistrarDetalleAsync(estado, email, "ASOCIADO", string.Join(" ", acciones), reclamo.Id);
@@ -221,8 +226,25 @@ public class ReclamoCorreoProcessingService
         var approved = !denied && ContainsAny(text, "APROBADO", "APROBADA", "APROBACION", "ACEPTADO", "ACEPTADA", "PROCEDENTE", "AUTORIZADO", "AUTORIZADA");
         var deducible = ContainsAny(text, "DEDUCIBLE");
         var rsa = ContainsAny(text, "RSA", "RESTITUCION DE SUMA ASEGURADA", "RESTITUCION SUMA ASEGURADA");
+        var moreDocs = ContainsAny(
+            text,
+            "DOCUMENTO ADICIONAL",
+            "DOCUMENTOS ADICIONALES",
+            "DOCUMENTACION ADICIONAL",
+            "DOCUMENTACION PENDIENTE",
+            "FALTA DOCUMENTO",
+            "FALTAN DOCUMENTOS",
+            "HACE FALTA",
+            "NECESITAMOS",
+            "SE REQUIERE",
+            "REQUERIMOS",
+            "PENDIENTE DE RECIBIR",
+            "AMPLIAR INFORMACION",
+            "INFORMACION ADICIONAL",
+            "ENVIAR NUEVAMENTE",
+            "CORREGIR");
 
-        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa)), deducible, rsa);
+        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa)), deducible, rsa, !approved && moreDocs);
     }
 
     private static bool ContainsAny(string text, params string[] values)
@@ -254,7 +276,7 @@ public class ReclamoCorreoProcessingService
         return normalized;
     }
 
-    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa);
+    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa, bool SolicitaMasDocumentos);
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {

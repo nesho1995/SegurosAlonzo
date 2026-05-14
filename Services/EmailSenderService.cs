@@ -51,19 +51,33 @@ public class EmailSenderService
         message.To.Add(to);
         if (cc is not null)
             message.Cc.Add(cc);
-        message.Subject = $"Documentos de reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString()}";
+        var referencia = reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString();
+        message.Subject = $"Expediente de reclamo {referencia} - documentos para revision";
+
+        var adjuntos = docs.Select((doc, index) =>
+        {
+            var tipo = ReclamoDocumentLabel(doc.TipoDocumento);
+            var observacion = string.IsNullOrWhiteSpace(doc.Observacion)
+                ? ""
+                : $"{Environment.NewLine}   Observacion: {doc.Observacion.Trim()}";
+            return $"{index + 1}. {tipo}{Environment.NewLine}   Archivo: {doc.NombreArchivoOriginal}{observacion}";
+        });
 
         var builder = new BodyBuilder
         {
             TextBody = $@"
 Buenas tardes.
 
-Adjuntamos documentos recibidos para el reclamo:
+Remitimos expediente digital para revision de la aseguradora.
 
 Cliente / Conductor: {reclamo.Conductor ?? reclamo.Asegurado}
+Asegurado: {reclamo.Asegurado}
 Poliza: {reclamo.Poliza}
 Placa: {reclamo.Placa}
-Reclamo: {reclamo.Reclamo ?? reclamo.NumeroReclamo}
+Reclamo: {referencia}
+
+Documentos adjuntos:
+{string.Join(Environment.NewLine, adjuntos)}
 
 Quedamos atentos.
 ".Trim()
@@ -84,6 +98,27 @@ Quedamos atentos.
         var response = await client.SendAsync(message);
         await client.DisconnectAsync(true);
         return (true, response);
+    }
+
+    private static string ReclamoDocumentLabel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "Documento";
+
+        var normalized = value.Trim().ToUpperInvariant().Replace(' ', '_');
+        return normalized switch
+        {
+            "FOTO_RECLAMO" => "Fotos del reclamo",
+            "LICENCIA" => "Licencia del conductor",
+            "TARJETA_CIRCULACION" => "Tarjeta de circulacion",
+            "COTIZACION_TALLER" => "Cotizacion de taller",
+            "INFORME_TALLER" => "Informe de taller",
+            "FINIQUITO" => "Finiquito",
+            "AVISO_ACCIDENTE" => "Aviso de accidente",
+            "PAGO_DEDUCIBLE" => "Pago de deducible",
+            "PAGO_RSA" => "Pago de RSA (restitucion de suma asegurada)",
+            _ => value.Replace('_', ' ').Trim()
+        };
     }
 
 }
