@@ -61,6 +61,23 @@ public class CorreoRevisionRepository
         });
     }
 
+    public async Task<string?> GetEstadoAsync(string messageId)
+    {
+        if (string.IsNullOrWhiteSpace(messageId))
+            return null;
+
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT estado
+            FROM correo_revision
+            WHERE message_id = @messageId
+            LIMIT 1;";
+
+        return await cn.ExecuteScalarAsync<string?>(sql, new { messageId });
+    }
+
     public async Task<IReadOnlyList<CorreoRevisionItem>> GetAsync(string? estado, int limit = 100)
     {
         await EnsureSchemaAsync();

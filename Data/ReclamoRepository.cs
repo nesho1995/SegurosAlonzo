@@ -300,6 +300,33 @@ public class ReclamoRepository
         });
     }
 
+    public async Task RegistrarRespuestaAseguradoraCorreoAsync(int id, string? respuesta, bool aprobado)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET respuesta_aseguradora = CASE
+                    WHEN @respuesta IS NULL THEN respuesta_aseguradora
+                    WHEN respuesta_aseguradora IS NULL OR respuesta_aseguradora = '' THEN @respuesta
+                    ELSE CONCAT(respuesta_aseguradora, '\n\n---\n', @respuesta)
+                END,
+                fecha_respuesta_aseguradora = NOW(),
+                aseguradora_aprobado = CASE WHEN @aprobado = 1 THEN 1 ELSE aseguradora_aprobado END,
+                estado = CASE WHEN @aprobado = 1 OR aseguradora_aprobado = 1 THEN 'ASEGURADORA_APROBADO' ELSE 'EN_REVISION_ASEGURADORA' END,
+                estado_reclamo = CASE WHEN @aprobado = 1 OR aseguradora_aprobado = 1 THEN 'ASEGURADORA_APROBADO' ELSE 'EN_REVISION_ASEGURADORA' END,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            respuesta = string.IsNullOrWhiteSpace(respuesta) ? null : respuesta.Trim(),
+            aprobado
+        });
+    }
+
     public async Task<bool> TodosDocumentosRecibidosAsync(int reclamoId)
     {
         await EnsureSchemaAsync();

@@ -59,8 +59,18 @@ public class ReclamoCorreoProcessingService
             {
                 try
                 {
+                    if (string.Equals(await _correoRevision.GetEstadoAsync(email.MessageId), "ASOCIADO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        estado.CorreosDuplicados++;
+                        estado.Detalles.Add(Detalle(email, "DUPLICADO", "Esta respuesta de aseguradora ya fue asociada anteriormente."));
+                        continue;
+                    }
+
                     if (!await _extractor.EsCorreoDeReclamoAsync(email.Subject))
                     {
+                        if (await TryProcessRespuestaAseguradoraAsync(email, estado))
+                            continue;
+
                         estado.CorreosIgnorados++;
                         await RegistrarDetalleAsync(estado, email, "IGNORADO", "El asunto no coincide con el patron de reclamo.");
                         continue;
@@ -154,6 +164,97 @@ public class ReclamoCorreoProcessingService
         estado.Detalles.Add(detalle);
         await _correoRevision.UpsertAsync(detalle, email.Body);
     }
+
+    private async Task<bool> TryProcessRespuestaAseguradoraAsync(EmailMessageDto email, ReclamoWorkerEstado estado)
+    {
+        var reclamo = await FindReferencedClaimAsync(email);
+        if (reclamo is null)
+            return false;
+
+        var analysis = AnalyzeInsuranceResponse(email);
+        await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
+
+        if (analysis.Aprobado || analysis.MencionaDeducible)
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de deducible");
+
+        if (analysis.Aprobado || analysis.MencionaRsa)
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de RSA (restitucion de suma asegurada)");
+
+        var acciones = new List<string> { $"Respuesta asociada al reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString()}." };
+        if (analysis.Aprobado)
+            acciones.Add("Se marco como aprobado por aseguradora.");
+        if (analysis.MencionaDeducible)
+            acciones.Add("Se habilito seguimiento de pago de deducible.");
+        if (analysis.MencionaRsa)
+            acciones.Add("Se habilito seguimiento de pago de RSA.");
+
+        estado.ReclamosValidos++;
+        await RegistrarDetalleAsync(estado, email, "ASOCIADO", string.Join(" ", acciones), reclamo.Id);
+        return true;
+    }
+
+    private async Task<ReclamoWhatsApp?> FindReferencedClaimAsync(EmailMessageDto email)
+    {
+        var text = NormalizeForMatch($"{email.Subject}\n{email.Body}");
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var reclamos = await _repo.GetAllAsync();
+        return reclamos
+            .Where(r => ContainsReference(text, r.Reclamo)
+                || ContainsReference(text, r.NumeroReclamo)
+                || ContainsReference(text, r.Placa))
+            .OrderByDescending(r => r.FechaCreacion)
+            .FirstOrDefault();
+    }
+
+    private static bool ContainsReference(string normalizedText, string? value)
+    {
+        var reference = NormalizeForMatch(value);
+        return reference.Length >= 5 && normalizedText.Contains(reference, StringComparison.Ordinal);
+    }
+
+    private static InsuranceResponseAnalysis AnalyzeInsuranceResponse(EmailMessageDto email)
+    {
+        var text = NormalizeForMatch($"{email.Subject}\n{email.Body}");
+        var denied = ContainsAny(text, "NO APROBADO", "NO APROBADA", "RECHAZADO", "RECHAZADA", "DECLINADO", "DECLINADA", "NO PROCEDE", "IMPROCEDENTE");
+        var approved = !denied && ContainsAny(text, "APROBADO", "APROBADA", "APROBACION", "ACEPTADO", "ACEPTADA", "PROCEDENTE", "AUTORIZADO", "AUTORIZADA");
+        var deducible = ContainsAny(text, "DEDUCIBLE");
+        var rsa = ContainsAny(text, "RSA", "RESTITUCION DE SUMA ASEGURADA", "RESTITUCION SUMA ASEGURADA");
+
+        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa)), deducible, rsa);
+    }
+
+    private static bool ContainsAny(string text, params string[] values)
+    {
+        return values.Any(value => text.Contains(value, StringComparison.Ordinal));
+    }
+
+    private static string BuildInsuranceResponseText(EmailMessageDto email)
+    {
+        var body = string.IsNullOrWhiteSpace(email.Body) ? "(sin cuerpo)" : email.Body.Trim();
+        var text = $"Asunto: {email.Subject}\n\n{body}";
+        return text.Length <= 8000 ? text : text[..8000];
+    }
+
+    private static string NormalizeForMatch(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var normalized = value.Trim().ToUpperInvariant()
+            .Replace('Á', 'A')
+            .Replace('É', 'E')
+            .Replace('Í', 'I')
+            .Replace('Ó', 'O')
+            .Replace('Ú', 'U')
+            .Replace('Ü', 'U')
+            .Replace('Ñ', 'N');
+
+        return normalized;
+    }
+
+    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa);
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {
