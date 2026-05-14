@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.FileProviders;
 using MySqlConnector;
@@ -24,6 +25,12 @@ builder.Services.Configure<HostOptions>(options =>
 builder.Services.AddControllersWithViews();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpContextAccessor();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // Rate limiting: máx 10 uploads por minuto por IP
 builder.Services.AddRateLimiter(options =>
@@ -239,6 +246,8 @@ static bool HasMySqlException(Exception? ex)
 
     return false;
 }
+
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
