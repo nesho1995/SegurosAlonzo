@@ -419,7 +419,7 @@ Atentamente.".Trim();
         var ciudad = HondurasLocationService.DetectCity(r.LugarAccidente);
         if (HondurasLocationService.IsTegucigalpa(ciudad))
         {
-            return "Talleres en red: para coordinar el taller que corresponde a su reclamo, por favor escriba a nuestro servicio al cliente al numero 89659690. Con gusto le apoyaremos con la gestion ante la aseguradora.";
+            return DefaultTalleresServicioClienteText;
         }
 
         var talleres = (await _talleres.SugerirAsync(ciudad, r.Aseguradora, r.TipoReclamo ?? "AUTOS")).Take(5).ToList();
@@ -428,9 +428,11 @@ Atentamente.".Trim();
             return "Talleres en red: " + string.Join(" | ", talleres.Select(x => $"{x.Nombre}: {x.Direccion}{(string.IsNullOrWhiteSpace(x.Telefono) ? "" : $" / Tel. {x.Telefono}")}"));
         }
 
-        var empresa = await _empresa.GetAsync();
-        return $"Talleres en red: no tenemos un taller parametrizado para esta ciudad en el catalogo. Por favor escriba a servicio al cliente al numero 89659690 para coordinar el taller o inspeccion que corresponde con la aseguradora.{(string.IsNullOrWhiteSpace(empresa.TelefonoEmpresa) ? "" : $" Telefono empresa: {empresa.TelefonoEmpresa}")}";
+        return DefaultTalleresServicioClienteText;
     }
+
+    private const string DefaultTalleresServicioClienteText =
+        "Talleres en red: para informacion de talleres, por favor contacte a servicio al cliente al numero 89659690. Con gusto le apoyaremos para coordinar la atencion que corresponda con la aseguradora.";
 
     private static List<string> BuildInitialDocumentLines()
     {

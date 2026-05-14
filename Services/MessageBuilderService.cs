@@ -47,10 +47,10 @@ public class MessageBuilderService
         var talleres = talleresSugeridos.Take(5).ToList();
         var bloqueTalleres = HondurasLocationService.IsTegucigalpa(ciudad)
             ? @"
-Talleres en red: para coordinar el taller que corresponde a su reclamo, por favor escriba a nuestro servicio al cliente al numero 89659690. Con gusto le apoyaremos con la gestion ante la aseguradora."
+Talleres en red: para informacion de talleres, por favor contacte a servicio al cliente al numero 89659690. Con gusto le apoyaremos para coordinar la atencion que corresponda con la aseguradora."
             : talleres.Count == 0
             ? $@"
-Talleres en red: no tenemos un taller parametrizado para esta ciudad en el catalogo. Por favor escriba a servicio al cliente al numero 89659690 para coordinar el taller o inspeccion que corresponde con la aseguradora.{(string.IsNullOrWhiteSpace(telefonoEmpresa) ? "" : $"{Environment.NewLine}Telefono empresa: {telefonoEmpresa}")}"
+Talleres en red: para informacion de talleres, por favor contacte a servicio al cliente al numero 89659690. Con gusto le apoyaremos para coordinar la atencion que corresponda con la aseguradora."
             : $@"
 Talleres en red:
 {string.Join(Environment.NewLine, talleres.Select(x => $"- {x.Nombre}: {x.Direccion}{(string.IsNullOrWhiteSpace(x.Telefono) ? "" : $" / Tel. {x.Telefono}")}"))}";
