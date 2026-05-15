@@ -102,7 +102,7 @@ public class ReclamoExtractorService
             patron,
             RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
-        return match.Success ? match.Groups[1].Value.Trim() : "";
+        return match.Success ? LimpiarValorCampo(match.Groups[1].Value) : "";
     }
 
     private static string ExtraerPrimero(string texto, string patron)
@@ -112,7 +112,7 @@ public class ReclamoExtractorService
             patron,
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-        return match.Success ? match.Groups[1].Value.Trim() : "";
+        return match.Success ? LimpiarValorCampo(match.Groups[1].Value) : "";
     }
 
     private static string ExtraerCampo(string texto, params string[] campos)
@@ -179,7 +179,7 @@ public class ReclamoExtractorService
             @"\s+(?:Aseguradora|Asegurado|Cliente|Conductor|Motorista|Piloto|Chofer|Celular|Telefono|Tel[eé]fono|P[oó]liza|Veh[ií]culo|Placa|Fecha|Reclamo|Ciudad|Municipio|Lugar)\s*:",
             RegexOptions.IgnoreCase)[0].Trim();
 
-        return cleaned.Trim(' ', '.', ',', ';', ':', '-');
+        return cleaned.Trim(' ', '.', ',', ';', ':', '-', '*');
     }
 
     private static bool EsLugarDemasiadoCorto(string value)
@@ -219,7 +219,7 @@ public class ReclamoExtractorService
         if (string.IsNullOrWhiteSpace(reclamo) && match.Groups.Count > 2)
             reclamo = match.Groups[2].Value;
 
-        return (placa?.ToUpper().Trim() ?? "", reclamo?.ToUpper().Trim() ?? "");
+        return (LimpiarValorCampo(placa).ToUpper().Trim(), LimpiarValorCampo(reclamo).ToUpper().Trim());
     }
 
     private static string ExtraerPlaca(string texto)
