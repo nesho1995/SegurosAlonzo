@@ -334,8 +334,7 @@ public class WhatsAppBandejaApiController : ControllerBase
         var nombre = NormalizeDocumentText(documento.NombreArchivoOriginal);
         var observacion = NormalizeDocumentText(documento.Observacion);
         var combined = $"{tipo} {nombre} {observacion}";
-        return combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
-            || combined.Contains("RSA", StringComparison.Ordinal)
+        return combined.Contains("RSA", StringComparison.Ordinal)
             || combined.Contains("RESTITUCION", StringComparison.Ordinal)
             || combined.Contains("COASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO ASEGURO", StringComparison.Ordinal);

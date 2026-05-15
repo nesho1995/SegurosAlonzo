@@ -344,12 +344,30 @@ public class ReclamosApiController : ControllerBase
         await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, request.Aprobado);
         if (request.Aprobado)
         {
-            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
-            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de coaseguro");
-            var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
-            var documentos = await _reclamos.GetDocumentosAsync(id);
-            var result = await _whatsApp.EnviarRecordatorioAsync(actualizado, documentos);
-            await _auditoria.RegistrarAsync(result.ok ? "AVISO_APROBACION_RECLAMO" : "ERROR_AVISO_APROBACION_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar comprobantes finales." : result.response);
+            var respuestaNormalizada = NormalizeDocumentText(request.Respuesta);
+            var requiereRsa = respuestaNormalizada.Contains("RSA", StringComparison.Ordinal)
+                || respuestaNormalizada.Contains("RESTITUCION", StringComparison.Ordinal);
+            var requiereCoaseguro = respuestaNormalizada.Contains("COASEGURO", StringComparison.Ordinal)
+                || respuestaNormalizada.Contains("CO ASEGURO", StringComparison.Ordinal);
+
+            if (requiereRsa)
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
+            if (requiereCoaseguro)
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de coaseguro");
+
+            if (requiereRsa || requiereCoaseguro)
+            {
+                var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
+                var documentos = await _reclamos.GetDocumentosAsync(id);
+                var result = await _whatsApp.EnviarRecordatorioAsync(actualizado, documentos);
+                await _auditoria.RegistrarAsync(result.ok ? "AVISO_APROBACION_RECLAMO" : "ERROR_AVISO_APROBACION_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar comprobantes finales." : result.response);
+            }
+            else
+            {
+                await _reclamos.MarcarTodosDocumentosAsync(id, recibido: true);
+                await _reclamos.UpdateEstadoAsync(id, "COMPLETO");
+                await _auditoria.RegistrarAsync("APROBACION_RECLAMO_SIN_PAGOS", "RECLAMO", id, "Aprobado sin RSA ni coaseguro pendientes.");
+            }
         }
 
         await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, request.Aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes." : "Respuesta de aseguradora registrada.");
@@ -369,8 +387,7 @@ public class ReclamosApiController : ControllerBase
         var nombre = NormalizeDocumentText(documento.NombreArchivoOriginal);
         var observacion = NormalizeDocumentText(documento.Observacion);
         var combined = $"{tipo} {nombre} {observacion}";
-        return combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
-            || combined.Contains("RSA", StringComparison.Ordinal)
+        return combined.Contains("RSA", StringComparison.Ordinal)
             || combined.Contains("RESTITUCION", StringComparison.Ordinal)
             || combined.Contains("COASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO ASEGURO", StringComparison.Ordinal);

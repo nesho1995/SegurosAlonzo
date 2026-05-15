@@ -174,13 +174,10 @@ public class ReclamoCorreoProcessingService
         var analysis = AnalyzeInsuranceResponse(email);
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
 
-        if (analysis.MencionaDeducible)
-            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de deducible");
-
-        if (analysis.Aprobado || analysis.MencionaRsa)
+        if (analysis.RequiereRsa)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de RSA (restitucion de suma asegurada)");
 
-        if (analysis.Aprobado || analysis.MencionaCoaseguro)
+        if (analysis.RequiereCoaseguro)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de coaseguro");
 
         if (analysis.SolicitaMasDocumentos)
@@ -189,21 +186,26 @@ public class ReclamoCorreoProcessingService
         var acciones = new List<string> { $"Respuesta asociada al reclamo {reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString()}." };
         if (analysis.Aprobado)
             acciones.Add("Se marco como aprobado por aseguradora.");
-        if (analysis.MencionaDeducible)
-            acciones.Add("Se habilito seguimiento de pago de deducible.");
-        if (analysis.MencionaRsa)
+        if (analysis.RequiereRsa)
             acciones.Add("Se habilito seguimiento de pago de RSA.");
-        if (analysis.MencionaCoaseguro)
+        if (analysis.RequiereCoaseguro)
             acciones.Add("Se habilito seguimiento de pago de coaseguro.");
+        if (analysis.AprobadoSinPagosFinales)
+            acciones.Add("Aprobado sin pagos finales pendientes; el cliente puede ingresar el vehiculo.");
         if (analysis.SolicitaMasDocumentos)
             acciones.Add("La aseguradora solicito documento o informacion adicional.");
 
-        if (analysis.Aprobado || analysis.MencionaDeducible || analysis.MencionaRsa || analysis.MencionaCoaseguro || analysis.SolicitaMasDocumentos)
+        if (analysis.RequiereRsa || analysis.RequiereCoaseguro || analysis.SolicitaMasDocumentos)
         {
             var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
             var pendientes = await _repo.GetDocumentosAsync(reclamo.Id);
             var envio = await _whatsApp.EnviarRecordatorioAsync(actualizado, pendientes);
             acciones.Add(envio.ok ? "Cliente notificado por WhatsApp." : $"No se pudo notificar al cliente: {envio.response}");
+        }
+        else if (analysis.AprobadoSinPagosFinales)
+        {
+            await _repo.MarcarTodosDocumentosAsync(reclamo.Id, recibido: true);
+            await _repo.UpdateEstadoAsync(reclamo.Id, "COMPLETO");
         }
 
         estado.ReclamosValidos++;
@@ -235,11 +237,45 @@ public class ReclamoCorreoProcessingService
     private static InsuranceResponseAnalysis AnalyzeInsuranceResponse(EmailMessageDto email)
     {
         var text = NormalizeForMatch($"{email.Subject}\n{email.Body}");
-        var denied = ContainsAny(text, "NO APROBADO", "NO APROBADA", "RECHAZADO", "RECHAZADA", "DECLINADO", "DECLINADA", "NO PROCEDE", "IMPROCEDENTE");
-        var approved = !denied && ContainsAny(text, "APROBADO", "APROBADA", "APROBACION", "ACEPTADO", "ACEPTADA", "PROCEDENTE", "AUTORIZADO", "AUTORIZADA");
-        var deducible = ContainsAny(text, "DEDUCIBLE");
+        var denied = ContainsAny(text, "NO APROBADO", "NO APROBADA", "RECHAZADO", "RECHAZADA", "DECLINADO", "DECLINADA", "NO PROCEDE", "IMPROCEDENTE", "SIN COBERTURA");
+        var approved = !denied && ContainsAny(text,
+            "APROBADO",
+            "APROBADA",
+            "APROBACION",
+            "APROBACIÓN",
+            "ACEPTADO",
+            "ACEPTADA",
+            "PROCEDENTE",
+            "AUTORIZADO",
+            "AUTORIZADA",
+            "AUTORIZAMOS",
+            "SE AUTORIZA",
+            "PUEDE INGRESAR",
+            "INGRESAR EL VEHICULO",
+            "INGRESAR LA UNIDAD",
+            "INGRESO DEL VEHICULO",
+            "INGRESO DE LA UNIDAD",
+            "PROCEDER CON LA REPARACION",
+            "PROCEDER CON REPARACION");
         var rsa = ContainsAny(text, "RSA", "RESTITUCION DE SUMA ASEGURADA", "RESTITUCION SUMA ASEGURADA");
         var coaseguro = ContainsAny(text, "COASEGURO", "CO ASEGURO");
+        var noFinalPayments = ContainsAny(text,
+            "SIN PAGO DE RSA",
+            "NO REQUIERE RSA",
+            "NO APLICA RSA",
+            "SIN RSA",
+            "SIN PAGO DE COASEGURO",
+            "NO REQUIERE COASEGURO",
+            "NO REQUIERE CO ASEGURO",
+            "NO APLICA COASEGURO",
+            "NO APLICA CO ASEGURO",
+            "SIN COASEGURO",
+            "SIN CO ASEGURO",
+            "SIN PAGAR COASEGURO",
+            "SIN PAGAR CO ASEGURO",
+            "PUEDE INGRESAR EL CARRO",
+            "PUEDE INGRESAR EL VEHICULO",
+            "PUEDE INGRESAR LA UNIDAD");
         var moreDocs = ContainsAny(
             text,
             "DOCUMENTO ADICIONAL",
@@ -258,7 +294,10 @@ public class ReclamoCorreoProcessingService
             "ENVIAR NUEVAMENTE",
             "CORREGIR");
 
-        return new InsuranceResponseAnalysis(approved || (!denied && (deducible || rsa || coaseguro)), deducible, rsa, coaseguro, !approved && moreDocs);
+        var requiresRsa = rsa && !ContainsAny(text, "NO REQUIERE RSA", "NO APLICA RSA", "SIN RSA", "SIN PAGO DE RSA");
+        var requiresCoaseguro = coaseguro && !ContainsAny(text, "NO REQUIERE COASEGURO", "NO REQUIERE CO ASEGURO", "NO APLICA COASEGURO", "NO APLICA CO ASEGURO", "SIN COASEGURO", "SIN CO ASEGURO", "SIN PAGO DE COASEGURO", "SIN PAGO DE CO ASEGURO");
+        var isApproved = approved || (!denied && (requiresRsa || requiresCoaseguro));
+        return new InsuranceResponseAnalysis(isApproved, requiresRsa, requiresCoaseguro, isApproved && !requiresRsa && !requiresCoaseguro && noFinalPayments, !isApproved && moreDocs);
     }
 
     private static bool ContainsAny(string text, params string[] values)
@@ -290,7 +329,7 @@ public class ReclamoCorreoProcessingService
         return normalized;
     }
 
-    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool MencionaDeducible, bool MencionaRsa, bool MencionaCoaseguro, bool SolicitaMasDocumentos);
+    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool RequiereRsa, bool RequiereCoaseguro, bool AprobadoSinPagosFinales, bool SolicitaMasDocumentos);
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {

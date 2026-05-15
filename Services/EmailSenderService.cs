@@ -55,7 +55,7 @@ public class EmailSenderService
             message.Cc.Add(cc);
         var referencia = reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString();
         message.Subject = soloComprobantesFinales
-            ? $"Comprobantes finales de reclamo {referencia} - deducible/RSA/coaseguro"
+            ? $"Comprobantes finales de reclamo {referencia} - RSA/coaseguro"
             : $"Expediente de reclamo {referencia} - documentos para revision";
 
         var adjuntos = docs.Select((doc, index) =>
