@@ -41,25 +41,27 @@ public class ReclamoExtractorService
         var body = LimpiarTexto(email.Body);
         var subject = email.Subject ?? "";
 
-        var aseguradora = FirstNonEmpty(ExtraerCampo(body, "Aseguradora"), ExtraerLinea(body, @"Aseguradora:\s*(.+)"));
-        var asegurado = FirstNonEmpty(ExtraerLinea(body, config.AseguradoPattern), ExtraerCampo(body, "Asegurado"));
-        var poliza = FirstNonEmpty(ExtraerLinea(body, config.PolizaPattern), ExtraerCampo(body, "Poliza"), ExtraerCampo(body, "Póliza"));
-        var caracteristicas = FirstNonEmpty(ExtraerLinea(body, config.CaracteristicasPattern), ExtraerCampo(body, "Vehiculo"), ExtraerCampo(body, "Vehículo"));
-        var conductor = FirstNonEmpty(ExtraerLinea(body, config.ConductorPattern), ExtraerCampo(body, "Conductor"));
-        var celular = FirstNonEmpty(ExtraerLinea(body, config.CelularPattern), ExtraerCampo(body, "Celular"));
+        var aseguradora = FirstNonEmpty(ExtraerCampo(body, "Aseguradora", "Compania", "Compañia", "Compañía", "Empresa aseguradora"), ExtraerLinea(body, @"Aseguradora:\s*(.+)"));
+        var asegurado = FirstNonEmpty(ExtraerLinea(body, config.AseguradoPattern), ExtraerCampo(body, "Asegurado", "Nombre asegurado", "Cliente", "Contratante"));
+        var poliza = FirstNonEmpty(ExtraerLinea(body, config.PolizaPattern), ExtraerCampo(body, "Poliza", "Póliza", "No. Poliza", "No Poliza", "Numero de poliza", "Número de póliza"));
+        var caracteristicas = FirstNonEmpty(ExtraerLinea(body, config.CaracteristicasPattern), ExtraerCampo(body, "Vehiculo", "Vehículo", "Unidad", "Bien asegurado", "Caracteristicas del bien asegurado", "Características del bien asegurado"));
+        var conductor = FirstNonEmpty(ExtraerLinea(body, config.ConductorPattern), ExtraerCampo(body, "Conductor", "Motorista", "Piloto", "Chofer"));
+        var celular = FirstNonEmpty(ExtraerLinea(body, config.CelularPattern), ExtraerCampo(body, "Celular", "Telefono", "Teléfono", "Movil", "Móvil", "WhatsApp"));
 
-        var fechaTexto = FirstNonEmpty(ExtraerPrimero(body, config.FechaPattern), ExtraerCampo(body, "Fecha"));
-        var lugar = FirstNonEmpty(ExtraerPrimero(body, config.LugarPattern), ExtraerCampo(body, "Lugar"));
+        var fechaTexto = FirstNonEmpty(
+            ExtraerPrimero(body, config.FechaPattern),
+            ExtraerCampo(body, "Fecha", "Fecha de notificacion", "Fecha notificacion", "Fecha de aviso", "Fecha del accidente", "Fecha de accidente", "Fecha del siniestro", "Fecha de siniestro"));
+        var lugar = ExtraerLugar(body, config);
         var (placa, reclamo) = ExtraerDatosAsunto(subject, config.SubjectPattern);
 
         if (string.IsNullOrWhiteSpace(placa))
-            placa = ExtraerPlaca(caracteristicas);
+            placa = FirstNonEmpty(ExtraerCampo(body, "Placa", "No. Placa", "Numero de placa", "Número de placa", "Matricula", "Matrícula"), ExtraerPlaca(caracteristicas));
 
         if (string.IsNullOrWhiteSpace(placa))
             placa = ExtraerPlaca(body);
 
         if (string.IsNullOrWhiteSpace(reclamo))
-            reclamo = ExtraerReclamo(subject);
+            reclamo = FirstNonEmpty(ExtraerCampo(body, "Reclamo", "No. Reclamo", "No Reclamo", "Numero de reclamo", "Número de reclamo", "Referencia"), ExtraerReclamo(subject));
 
         return new ReclamoWhatsApp
         {
@@ -113,18 +115,81 @@ public class ReclamoExtractorService
         return match.Success ? match.Groups[1].Value.Trim() : "";
     }
 
-    private static string ExtraerCampo(string texto, string campo)
+    private static string ExtraerCampo(string texto, params string[] campos)
     {
-        if (string.IsNullOrWhiteSpace(texto) || string.IsNullOrWhiteSpace(campo))
+        if (string.IsNullOrWhiteSpace(texto) || campos.Length == 0)
             return "";
 
-        var escaped = Regex.Escape(campo);
+        var escaped = string.Join("|", campos.Where(x => !string.IsNullOrWhiteSpace(x)).Select(Regex.Escape));
+        if (string.IsNullOrWhiteSpace(escaped))
+            return "";
+
         var match = Regex.Match(
             texto,
-            $@"^\s*{escaped}\s*:\s*(.+?)\s*$",
+            $@"^\s*(?:{escaped})\s*:\s*(.+?)\s*$",
             RegexOptions.IgnoreCase | RegexOptions.Multiline);
 
-        return match.Success ? match.Groups[1].Value.Trim() : "";
+        return match.Success ? LimpiarValorCampo(match.Groups[1].Value) : "";
+    }
+
+    private static string ExtraerLugar(string body, CorreoExtractorConfig config)
+    {
+        var lugar = FirstNonEmpty(
+            ExtraerCampo(
+                body,
+                "Lugar",
+                "Lugar del accidente",
+                "Lugar de accidente",
+                "Lugar del siniestro",
+                "Lugar de siniestro",
+                "Ocurrido en",
+                "Ocurrio en",
+                "Ocurrió en",
+                "Accidente ocurrido en",
+                "Siniestro ocurrido en",
+                "Direccion del accidente",
+                "Dirección del accidente",
+                "Ubicacion",
+                "Ubicación",
+                "Ciudad",
+                "Municipio",
+                "Localidad"),
+            ExtraerPrimero(body, config.LugarPattern));
+
+        lugar = LimpiarValorCampo(lugar);
+        var ciudad = HondurasLocationService.DetectCity(lugar);
+
+        if (EsLugarDemasiadoCorto(lugar) && !string.IsNullOrWhiteSpace(ciudad))
+            return ciudad;
+
+        if (string.IsNullOrWhiteSpace(lugar))
+            return FirstNonEmpty(ExtraerCampo(body, "Ciudad", "Municipio", "Localidad"), ciudad);
+
+        return lugar;
+    }
+
+    private static string LimpiarValorCampo(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var cleaned = Regex.Replace(value, @"\s+", " ").Trim();
+        cleaned = Regex.Split(
+            cleaned,
+            @"\s+(?:Aseguradora|Asegurado|Cliente|Conductor|Motorista|Piloto|Chofer|Celular|Telefono|Tel[eé]fono|P[oó]liza|Veh[ií]culo|Placa|Fecha|Reclamo|Ciudad|Municipio|Lugar)\s*:",
+            RegexOptions.IgnoreCase)[0].Trim();
+
+        return cleaned.Trim(' ', '.', ',', ';', ':', '-');
+    }
+
+    private static bool EsLugarDemasiadoCorto(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        var normalized = value.Trim();
+        return normalized.Length < 8
+            || Regex.IsMatch(normalized, @"^(?:barrio|bo\.?|colonia|col\.?|residencial|aldea|caserio|caser[ií]o|sector)\s+(?:el|la|los|las)?$", RegexOptions.IgnoreCase);
     }
 
     private static string FirstNonEmpty(params string?[] values)

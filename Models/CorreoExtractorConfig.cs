@@ -24,10 +24,10 @@ public class CorreoExtractorConfig
     public string CelularPattern { get; set; } = @"Celular\s*:\s*([0-9\-\s\+]+)";
 
     [Required]
-    public string FechaPattern { get; set; } = @"(?:notificado con fecha|Fecha)\s*:?\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})";
+    public string FechaPattern { get; set; } = @"(?:notificado con fecha|Fecha(?: de notificacion| notificacion| de aviso| del accidente| de accidente| del siniestro| de siniestro)?)\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})";
 
     [Required]
-    public string LugarPattern { get; set; } = @"(?:Ocurrido en|Ocurrio en|Lugar(?: del accidente)?|Accidente ocurrido en)\s*:?\s*([^\r\n]+)";
+    public string LugarPattern { get; set; } = @"(?:Ocurrido en|Ocurrio en|Ocurri[oó] en|Lugar(?: del accidente| de accidente| del siniestro| de siniestro)?|Accidente ocurrido en|Siniestro ocurrido en|Direcci[oó]n del accidente|Ubicaci[oó]n|Ciudad|Municipio|Localidad)\s*:?\s*([^\r\n]+)";
 
     public static IReadOnlyDictionary<string, string> DefaultValues => new Dictionary<string, string>
     {
@@ -37,7 +37,7 @@ public class CorreoExtractorConfig
         [nameof(CaracteristicasPattern)] = @"(?:Caracter[ií]sticas del Bien asegurado|Veh[ií]culo|Vehiculo)\s*:\s*(.+)",
         [nameof(ConductorPattern)] = @"Conductor\s*:\s*(.+)",
         [nameof(CelularPattern)] = @"Celular\s*:\s*([0-9\-\s\+]+)",
-        [nameof(FechaPattern)] = @"(?:notificado con fecha|Fecha)\s*:?\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})",
-        [nameof(LugarPattern)] = @"(?:Ocurrido en|Ocurrio en|Lugar(?: del accidente)?|Accidente ocurrido en)\s*:?\s*([^\r\n]+)"
+        [nameof(FechaPattern)] = @"(?:notificado con fecha|Fecha(?: de notificacion| notificacion| de aviso| del accidente| de accidente| del siniestro| de siniestro)?)\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{4})",
+        [nameof(LugarPattern)] = @"(?:Ocurrido en|Ocurrio en|Ocurri[oó] en|Lugar(?: del accidente| de accidente| del siniestro| de siniestro)?|Accidente ocurrido en|Siniestro ocurrido en|Direcci[oó]n del accidente|Ubicaci[oó]n|Ciudad|Municipio|Localidad)\s*:?\s*([^\r\n]+)"
     };
 }
