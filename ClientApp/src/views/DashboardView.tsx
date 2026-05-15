@@ -9,6 +9,7 @@ import { ErrorCard } from '../components/ErrorAlert'
 import { PanelTitle } from '../components/FormControls'
 import { PageHeader } from '../components/Topbar'
 import { Metric } from '../components/StatCard'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { DashboardResponse } from '../types/dashboard'
 import { compactMeta, dateFmt, moneySafe } from '../utils/formatters'
 
@@ -36,6 +37,13 @@ export function DashboardView() {
     setFilters(f => ({ ...f }))
   }
 
+  async function refreshDashboard() {
+    const [dashboard, tareasHoy] = await Promise.all([getDashboard(filters), getTareasHoy()])
+    setData(dashboard)
+    setTareas(tareasHoy)
+    setLastUpdated(new Date())
+  }
+
   useEffect(() => {
     let alive = true
     getTareasHoy()
@@ -43,6 +51,10 @@ export function DashboardView() {
       .catch(() => {})
     return () => { alive = false }
   }, [])
+
+  useAutoRefresh(async () => {
+    await refreshDashboard()
+  }, 30000)
 
   const criticalAlerts = useMemo(() => {
     if (!data) return 0

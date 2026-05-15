@@ -24,6 +24,7 @@ import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
 import { AccordionSection } from '../components/AccordionSection'
 import { notify } from '../components/ToastHost'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { ClaimChecklistItem, ClaimItem, ClaimsResponse } from '../types/reclamos'
 import { compactMeta, dateFmt } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
@@ -126,6 +127,12 @@ export function ReclamosView() {
     setData(response)
     setSelected(response.items.find((item) => item.id === selected.id) ?? selected)
   }
+
+  useAutoRefresh(async () => {
+    if (actionBusy) return
+    if (selected) await refreshSelected()
+    else await load()
+  }, 10000, !actionBusy)
 
   async function runAction(action: () => Promise<unknown>, success: string) {
     setActionBusy(true)

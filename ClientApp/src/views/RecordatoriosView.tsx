@@ -8,6 +8,7 @@ import { ErrorCard } from '../components/ErrorAlert'
 import { PanelTitle, Toolbar } from '../components/FormControls'
 import { PageHeader } from '../components/Topbar'
 import { Metric } from '../components/StatCard'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { ReminderResponse } from '../types/recordatorios'
 import { compactMeta, dateFmt, moneySafe } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
@@ -74,6 +75,10 @@ export function RemindersView() {
       alive = false
     }
   }, [estado, buscar])
+
+  useAutoRefresh(async () => {
+    if (!busy) await load()
+  }, 15000, !busy)
 
   return (
     <>

@@ -5,6 +5,7 @@ import { ErrorCard } from '../components/ErrorAlert'
 import { Field, PanelTitle } from '../components/FormControls'
 import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { CorreoRevisionItem, ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
 
 export function CorreoConfigView() {
@@ -22,6 +23,12 @@ export function CorreoConfigView() {
     const [imap, smtp, workerStatus, revision] = await Promise.all([getReclamoCorreoConfig(), getSmtpConfig(), getReclamoWorkerStatus(), getCorreoRevision(bandejaEstado)])
     setImapConfig(imap)
     setSmtpConfig(smtp)
+    setStatus(workerStatus)
+    setBandeja(revision.items)
+  }
+
+  async function loadWorkerActivity() {
+    const [workerStatus, revision] = await Promise.all([getReclamoWorkerStatus(), getCorreoRevision(bandejaEstado)])
     setStatus(workerStatus)
     setBandeja(revision.items)
   }
@@ -104,6 +111,11 @@ export function CorreoConfigView() {
       setMessage('Modo recuperacion ejecutado.')
     })
   }
+
+  useAutoRefresh(async () => {
+    if (busyAction) return
+    await loadWorkerActivity()
+  }, 10000, !busyAction)
 
   if (!imapConfig || !smtpConfig) return <LoadingCard text="Cargando configuracion de correo..." />
 

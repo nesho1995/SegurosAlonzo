@@ -11,6 +11,7 @@ import { Metric } from '../components/StatCard'
 import { DocumentosPanel } from '../components/DocumentosPanel'
 import { AccordionSection } from '../components/AccordionSection'
 import { notify } from '../components/ToastHost'
+import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { Payment, PaymentsResponse } from '../types/pagos'
 import { compactMeta, dateFmt, moneySafe } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
@@ -117,6 +118,8 @@ export function PaymentsView() {
       alive = false
     }
   }, [estado, buscar])
+
+  useAutoRefresh(load, 15000)
 
   return (
     <>
