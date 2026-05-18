@@ -66,7 +66,7 @@ public class ReclamoCorreoProcessingService
                         continue;
                     }
 
-                    var esCorreoDeReclamo = await _extractor.EsCorreoDeReclamoAsync(email.Subject);
+                    var esCorreoDeReclamo = await _extractor.EsCorreoDeReclamoAsync(email);
                     if (!esCorreoDeReclamo)
                     {
                         if (await TryProcessRespuestaAseguradoraAsync(email, estado))

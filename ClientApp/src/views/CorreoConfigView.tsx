@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getSmtpConfig, probarSmtp, updateSmtpConfig, type SmtpConfig } from '../api/configuracionApi'
 import { getCorreoRevision, getReclamoCorreoConfig, getReclamoWorkerStatus, processReclamosNow, recoveryReclamos, saveReclamoCorreoConfig, testReclamoCorreoConnection } from '../api/reclamosConfigApi'
 import { ErrorCard } from '../components/ErrorAlert'
@@ -7,6 +7,59 @@ import { LoadingCard } from '../components/LoadingState'
 import { PageHeader } from '../components/Topbar'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import type { CorreoRevisionItem, ReclamoCorreoConfig, ReclamoWorkerEstado } from '../types/reclamosConfig'
+
+type MailStatusTone = 'success' | 'info' | 'warning' | 'danger' | 'neutral'
+
+const statusMeta: Record<string, { label: string; tone: MailStatusTone; action: string }> = {
+  PROCESADO: { label: 'Procesado', tone: 'success', action: 'Reclamo creado' },
+  ASOCIADO: { label: 'Asociado', tone: 'info', action: 'Respuesta asociada' },
+  DUPLICADO: { label: 'Duplicado', tone: 'warning', action: 'Ya existia' },
+  IGNORADO: { label: 'Ignorado', tone: 'neutral', action: 'Sin accion' },
+  ERROR: { label: 'Error', tone: 'danger', action: 'Revisar' }
+}
+
+function metaForStatus(status?: string) {
+  return statusMeta[(status || '').toUpperCase()] || { label: status || 'Sin estado', tone: 'neutral' as MailStatusTone, action: 'Sin clasificar' }
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return 'Sin fecha'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('es-HN', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function MailStatusBadge({ estado }: { estado?: string }) {
+  const meta = metaForStatus(estado)
+  return <span className={`mail-status-badge ${meta.tone}`}>{meta.label}</span>
+}
+
+function MailActivityCard({ item, compact = false }: { item: CorreoRevisionItem | { subject: string; messageId: string; estado: string; motivo: string; reclamoId?: number; bodyPreview?: string; fechaProcesamientoUtc?: string }; compact?: boolean }) {
+  const meta = metaForStatus(item.estado)
+  return (
+    <details className={`mail-review-card ${meta.tone}`} open={!compact && meta.tone === 'danger'}>
+      <summary>
+        <div className="mail-review-main">
+          <MailStatusBadge estado={item.estado} />
+          <div className="mail-review-copy">
+            <strong>{item.subject || 'Sin asunto'}</strong>
+            <span>{item.motivo || meta.action}</span>
+          </div>
+        </div>
+        <div className="mail-review-side">
+          {item.reclamoId && <span>Reclamo #{item.reclamoId}</span>}
+          {'fechaProcesamientoUtc' in item && <time>{formatDateTime(item.fechaProcesamientoUtc)}</time>}
+        </div>
+      </summary>
+      <div className="mail-review-detail">
+        <div><strong>Resultado:</strong> {meta.action}</div>
+        <div><strong>Motivo:</strong> {item.motivo || 'Sin detalle adicional.'}</div>
+        {item.bodyPreview && <div><strong>Vista previa:</strong> {item.bodyPreview}</div>}
+        {item.messageId && <div><strong>Mensaje:</strong> {item.messageId}</div>}
+      </div>
+    </details>
+  )
+}
 
 export function CorreoConfigView() {
   const [imapConfig, setImapConfig] = useState<ReclamoCorreoConfig | null>(null)
@@ -17,6 +70,17 @@ export function CorreoConfigView() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
+  const statusCards = useMemo(() => {
+    if (!status) return []
+    return [
+      ['Leidos', status.correosEncontrados, 'neutral'],
+      ['Validos', status.reclamosValidos, 'info'],
+      ['Creados', status.correosProcesados, 'success'],
+      ['Ignorados', status.correosIgnorados, 'neutral'],
+      ['Duplicados', status.correosDuplicados, 'warning'],
+      ['Errores', status.correosConError, 'danger']
+    ] as Array<[string, number, MailStatusTone]>
+  }, [status])
 
   async function load() {
     setError(null)
@@ -147,9 +211,20 @@ export function CorreoConfigView() {
             </div>
           </div>
           {status && (
-            <div className="inline-alert info">
-              Ultima ejecucion: {status.ultimaEjecucionUtc || 'N/A'} | Leidos: {status.correosEncontrados} | Reclamos validos: {status.reclamosValidos} | Creados: {status.correosProcesados} | Ignorados: {status.correosIgnorados} | Duplicados: {status.correosDuplicados} | Errores: {status.correosConError}
-              {status.ultimoError ? ` | Error general: ${status.ultimoError}` : ''}
+            <div className="mail-worker-summary">
+              <div className="mail-worker-meta">
+                <span>Ultima ejecucion</span>
+                <strong>{formatDateTime(status.ultimaEjecucionUtc)}</strong>
+              </div>
+              <div className="mail-worker-stats">
+                {statusCards.map(([label, value, tone]) => (
+                  <span key={label} className={`mail-stat ${tone}`}>
+                    <strong>{value}</strong>
+                    {label}
+                  </span>
+                ))}
+              </div>
+              {status.ultimoError && <div className="inline-alert danger wide-field">Error general: {status.ultimoError}</div>}
             </div>
           )}
         </article>
@@ -175,13 +250,10 @@ export function CorreoConfigView() {
 
       {status?.detalles && status.detalles.length > 0 && (
         <article className="panel mt-panel">
-          <PanelTitle title="Ultimos correos evaluados" subtitle="Resultado exacto del worker para entender que se creo, ignoro o rechazo." />
-          <div className="result-panel">
+          <PanelTitle title="Actividad reciente de correos" subtitle="Resumen de lo que se detecto en la ultima lectura." />
+          <div className="mail-review-list compact">
             {status.detalles.map((item, index) => (
-              <div key={`${item.messageId}-${index}`} className="renewal-row">
-                <strong>{item.estado}{item.reclamoId ? ` #${item.reclamoId}` : ''}</strong>
-                <span>{item.subject || 'Sin asunto'} - {item.motivo}</span>
-              </div>
+              <MailActivityCard key={`${item.messageId}-${index}`} item={item} compact />
             ))}
           </div>
         </article>
@@ -189,7 +261,7 @@ export function CorreoConfigView() {
 
       <article className="panel mt-panel">
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-          <PanelTitle title="Bandeja de correos revisados" subtitle="Historial persistente de correos procesados, ignorados, duplicados y con error." />
+          <PanelTitle title="Bandeja de revision de correos" subtitle="Historial ordenado para revisar que se creo, que se asocio y que requiere atencion." />
           <label className="field compact-field">
             <span>Estado</span>
             <select value={bandejaEstado} onChange={(event) => setBandejaEstado(event.target.value)}>
@@ -201,14 +273,10 @@ export function CorreoConfigView() {
             </select>
           </label>
         </div>
-        <div className="result-panel">
+        <div className="mail-review-list">
           {bandeja.length === 0 && <div className="inline-alert info">Aun no hay correos en esta bandeja.</div>}
           {bandeja.map((item) => (
-            <div key={item.id} className="renewal-row correo-review-row">
-              <strong>{item.estado}{item.reclamoId ? ` #${item.reclamoId}` : ''}</strong>
-              <span>{item.subject || 'Sin asunto'} - {item.motivo}</span>
-              {item.bodyPreview && <small>{item.bodyPreview}</small>}
-            </div>
+            <MailActivityCard key={item.id} item={item} />
           ))}
         </div>
       </article>

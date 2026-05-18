@@ -25,13 +25,17 @@ public class ReclamoExtractorService
         return Extract(email, new CorreoExtractorConfig());
     }
 
-    public async Task<bool> EsCorreoDeReclamoAsync(string? subject)
+    public async Task<bool> EsCorreoDeReclamoAsync(EmailMessageDto email)
     {
-        if (string.IsNullOrWhiteSpace(subject))
+        if (email is null || (string.IsNullOrWhiteSpace(email.Subject) && string.IsNullOrWhiteSpace(email.Body)))
             return false;
 
         var config = await _settings.GetCorreoExtractorConfigAsync();
-        var (placa, reclamo) = ExtraerDatosAsunto(subject, config.SubjectPattern);
+        var subject = email.Subject ?? "";
+        var body = LimpiarTexto(email.Body);
+        var (placaAsunto, reclamoAsunto) = ExtraerDatosAsunto(subject, config.SubjectPattern);
+        var placa = FirstNonEmpty(ExtraerPlacaDesdeCuerpo(body), placaAsunto);
+        var reclamo = FirstNonEmpty(ExtraerReclamoDesdeCuerpo(body), reclamoAsunto);
 
         return !string.IsNullOrWhiteSpace(placa) && !string.IsNullOrWhiteSpace(reclamo);
     }
@@ -52,7 +56,9 @@ public class ReclamoExtractorService
             ExtraerPrimero(body, config.FechaPattern),
             ExtraerCampo(body, "Fecha", "Fecha de notificacion", "Fecha notificacion", "Fecha de aviso", "Fecha del accidente", "Fecha de accidente", "Fecha del siniestro", "Fecha de siniestro"));
         var lugar = ExtraerLugar(body, config);
-        var (placa, reclamo) = ExtraerDatosAsunto(subject, config.SubjectPattern);
+        var (placaAsunto, reclamoAsunto) = ExtraerDatosAsunto(subject, config.SubjectPattern);
+        var placa = FirstNonEmpty(ExtraerPlacaDesdeCuerpo(body), placaAsunto);
+        var reclamo = FirstNonEmpty(ExtraerReclamoDesdeCuerpo(body), reclamoAsunto);
 
         if (string.IsNullOrWhiteSpace(placa))
             placa = FirstNonEmpty(ExtraerCampo(body, "Placa", "No. Placa", "Numero de placa", "Número de placa", "Matricula", "Matrícula"), ExtraerPlaca(caracteristicas));
@@ -197,6 +203,24 @@ public class ReclamoExtractorService
         return values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? "";
     }
 
+    private static string ExtraerPlacaDesdeCuerpo(string body)
+    {
+        var value = ExtraerCampo(body, "Placa", "No. Placa", "Numero de placa", "NÃºmero de placa", "Matricula", "MatrÃ­cula");
+        return string.IsNullOrWhiteSpace(value) ? "" : ExtraerPlaca(value);
+    }
+
+    private static string ExtraerReclamoDesdeCuerpo(string body)
+    {
+        var value = ExtraerCampo(body, "Reclamo", "No. Reclamo", "No Reclamo", "Numero de reclamo", "NÃºmero de reclamo", "Referencia", "Caso", "Expediente");
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var structured = ExtraerReclamo(value);
+        return string.IsNullOrWhiteSpace(structured)
+            ? LimpiarValorCampo(value).ToUpperInvariant().Trim()
+            : structured;
+    }
+
     private static (string placa, string reclamo) ExtraerDatosAsunto(string texto, string patron)
     {
         if (string.IsNullOrWhiteSpace(texto))
@@ -208,7 +232,7 @@ public class ReclamoExtractorService
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         if (!match.Success)
-            return ("", "");
+            return (ExtraerPlaca(texto), ExtraerReclamo(texto));
 
         var placa = match.Groups["placa"]?.Value;
         var reclamo = match.Groups["reclamo"]?.Value;
@@ -219,7 +243,16 @@ public class ReclamoExtractorService
         if (string.IsNullOrWhiteSpace(reclamo) && match.Groups.Count > 2)
             reclamo = match.Groups[2].Value;
 
-        return (LimpiarValorCampo(placa).ToUpper().Trim(), LimpiarValorCampo(reclamo).ToUpper().Trim());
+        placa = LimpiarValorCampo(placa).ToUpper().Trim();
+        reclamo = LimpiarValorCampo(reclamo).ToUpper().Trim();
+
+        if (string.IsNullOrWhiteSpace(placa))
+            placa = ExtraerPlaca(texto);
+
+        if (string.IsNullOrWhiteSpace(reclamo))
+            reclamo = ExtraerReclamo(texto);
+
+        return (placa, reclamo);
     }
 
     private static string ExtraerPlaca(string texto)
@@ -227,8 +260,14 @@ public class ReclamoExtractorService
         if (string.IsNullOrWhiteSpace(texto))
             return "";
 
-        var match = Regex.Match(
+        var sinReclamo = Regex.Replace(
             texto,
+            @"\b[A-Z]{2,5}-[0-9]{2,5}-[0-9]{3,4}\b",
+            " ",
+            RegexOptions.IgnoreCase);
+
+        var match = Regex.Match(
+            sinReclamo,
             @"\b[A-Z]{2,4}-?[0-9]{3,4}\b",
             RegexOptions.IgnoreCase);
 
@@ -242,7 +281,7 @@ public class ReclamoExtractorService
 
         var match = Regex.Match(
             texto,
-            @"\b[A-Z]{2,5}-[0-9]{2,5}-[0-9]{4}\b",
+            @"\b[A-Z]{2,5}-[0-9]{2,5}-[0-9]{3,4}\b",
             RegexOptions.IgnoreCase);
 
         return match.Success ? match.Value.ToUpper().Trim() : "";

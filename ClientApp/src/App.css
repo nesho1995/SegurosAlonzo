@@ -553,6 +553,7 @@
   width: 100%;
   overflow: auto;
   max-width: 100%;
+  min-height: 0;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -566,6 +567,196 @@
   min-width: 0;
   color: #607177;
   overflow-wrap: anywhere;
+}
+
+.mail-worker-summary {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #d8e4e0;
+  border-radius: 8px;
+  background: #f8fbfa;
+}
+
+.mail-worker-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #607177;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mail-worker-meta strong {
+  color: #172126;
+  text-align: right;
+}
+
+.mail-worker-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.mail-stat {
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid #d8e4e0;
+  border-radius: 8px;
+  background: #fff;
+  color: #607177;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mail-stat strong {
+  color: #172126;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.mail-stat.success { border-color: #bbf7d0; background: #f0fdf4; }
+.mail-stat.info { border-color: #bfdbfe; background: #eff6ff; }
+.mail-stat.warning { border-color: #fde68a; background: #fffbeb; }
+.mail-stat.danger { border-color: #fecaca; background: #fef2f2; }
+
+.mail-review-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(640px, 70vh);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.mail-review-list.compact {
+  max-height: 420px;
+}
+
+.mail-review-card {
+  border: 1px solid #d8e4e0;
+  border-left-width: 5px;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.mail-review-card.success { border-left-color: #16a34a; }
+.mail-review-card.info { border-left-color: #2563eb; }
+.mail-review-card.warning { border-left-color: #d97706; }
+.mail-review-card.danger { border-left-color: #dc2626; }
+.mail-review-card.neutral { border-left-color: #94a3b8; }
+
+.mail-review-card summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+  gap: 12px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mail-review-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.mail-review-card summary:hover {
+  background: #f8fbfa;
+}
+
+.mail-review-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.mail-review-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mail-review-copy strong,
+.mail-review-copy span,
+.mail-review-side span,
+.mail-review-side time,
+.mail-review-detail {
+  overflow-wrap: anywhere;
+}
+
+.mail-review-copy strong {
+  color: #172126;
+  font-size: 14px;
+}
+
+.mail-review-copy span {
+  color: #607177;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mail-review-side {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  color: #607177;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.mail-review-detail {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid #d8e4e0;
+  background: #fbfdfc;
+  color: #3b4b51;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mail-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mail-status-badge.success { color: #166534; background: #dcfce7; }
+.mail-status-badge.info { color: #1d4ed8; background: #dbeafe; }
+.mail-status-badge.warning { color: #92400e; background: #fef3c7; }
+.mail-status-badge.danger { color: #991b1b; background: #fee2e2; }
+.mail-status-badge.neutral { color: #475569; background: #f1f5f9; }
+
+@media (max-width: 760px) {
+  .mail-worker-meta,
+  .mail-review-card summary {
+    grid-template-columns: 1fr;
+  }
+
+  .mail-review-side {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .mail-review-main {
+    grid-template-columns: 1fr;
+  }
 }
 
 .data-table,
@@ -860,6 +1051,9 @@ th.col-acciones {
   padding: 10px 12px;
   border-radius: 8px;
   font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 .inline-alert.success {
