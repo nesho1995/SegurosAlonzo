@@ -93,7 +93,7 @@ export function BulkHelpView() {
 
   return (
     <>
-      <PageHeader eyebrow="Ayuda" title="Carga masiva" description="Importa cartera y talleres desde Excel. Revisa el preview antes de confirmar." onRefresh={() => undefined} />
+      <PageHeader eyebrow="Ayuda" title="Carga masiva" description="Importa cartera, talleres y reclamos historicos desde Excel. Revisa el preview antes de confirmar." onRefresh={() => undefined} />
 
       {error   && <ErrorCard text={error} />}
       {message && <div className="inline-alert success">{message}</div>}
@@ -157,12 +157,15 @@ export function BulkHelpView() {
       <details className="accordion-section">
         <summary>
           <span>
-            <strong>Cargar reclamos activos</strong>
-            <small>{reclamosPreview ? `${reclamosPreview.importableCount} importables · ${reclamosPreview.duplicateCount} duplicados · ${reclamosPreview.errorCount} errores` : reclamosFile ? reclamosFile.name : 'Formato CREFISA / Prestadito de reclamos historicos'}</small>
+            <strong>Carga historica de reclamos</strong>
+            <small>{reclamosPreview ? `${reclamosPreview.importableCount} importables · ${reclamosPreview.duplicateCount} duplicados · ${reclamosPreview.errorCount} errores` : reclamosFile ? reclamosFile.name : 'Reclamos existentes de cualquier aseguradora para iniciar seguimiento'}</small>
           </span>
           <span className="accordion-actions"><ChevronDown size={18} /></span>
         </summary>
         <div className="accordion-body">
+          <div className="inline-alert info" style={{ marginBottom: 8 }}>
+            Usa esta carga para traer reclamos existentes antes de iniciar el seguimiento automatico por correo. No esta limitada a una aseguradora especifica.
+          </div>
           <div className="bulk-file-row" style={{ padding: '8px 0 12px' }}>
             <label className="bulk-file-btn">
               <FileSpreadsheet size={16} />
