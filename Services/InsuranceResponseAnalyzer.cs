@@ -9,7 +9,7 @@ public sealed record InsuranceResponseAnalysis(
     bool Aprobado,
     bool Denegado,
     bool RequiereRsa,
-    bool RequiereCoaseguro,
+    bool RequiereDeducible,
     bool AprobadoSinPagosFinales,
     bool SolicitaMasDocumentos,
     bool TieneSenales);
@@ -125,6 +125,13 @@ public static class InsuranceResponseAnalyzer
             "APORTE DEL ASEGURADO",
             "APORTE ASEGURADO",
             "PORCENTAJE DEL ASEGURADO");
+        var mentionsDeducible = ContainsAny(text,
+            "DEDUCIBLE",
+            "DEDUCIBLES",
+            "PAGO DE DEDUCIBLE",
+            "PAGAR DEDUCIBLE",
+            "CUBRIR DEDUCIBLE",
+            "CANCELAR DEDUCIBLE");
         var requiresRsa = mentionsRsa && !ContainsAny(text,
             "NO REQUIERE RSA",
             "NO APLICA RSA",
@@ -137,7 +144,16 @@ public static class InsuranceResponseAnalyzer
             "EXENTO DE RSA",
             "SIN RSA",
             "SIN PAGO DE RSA");
-        var requiresCoaseguro = mentionsCoaseguro && !ContainsAny(text,
+        var requiresDeducible = (mentionsDeducible || mentionsCoaseguro) && !ContainsAny(text,
+            "SIN DEDUCIBLE",
+            "NO REQUIERE DEDUCIBLE",
+            "NO APLICA DEDUCIBLE",
+            "NO DEBE PAGAR DEDUCIBLE",
+            "NO CORRESPONDE DEDUCIBLE",
+            "NO SE REQUIERE DEDUCIBLE",
+            "EXENTO DE DEDUCIBLE",
+            "SIN PAGO DE DEDUCIBLE",
+            "NO HAY DEDUCIBLE",
             "NO REQUIERE COASEGURO",
             "NO REQUIERE CO ASEGURO",
             "NO REQUIERE CO-SEGURO",
@@ -254,15 +270,15 @@ public static class InsuranceResponseAnalyzer
             "AGRADECEMOS ENVIAR",
             "CORREGIR");
 
-        var isApproved = approved || (!denied && (requiresRsa || requiresCoaseguro));
-        var hasSignals = isApproved || denied || mentionsRsa || mentionsCoaseguro || noFinalPayments || moreDocs;
+        var isApproved = approved || (!denied && (requiresRsa || requiresDeducible));
+        var hasSignals = isApproved || denied || mentionsRsa || mentionsCoaseguro || mentionsDeducible || noFinalPayments || moreDocs;
 
         return new InsuranceResponseAnalysis(
             isApproved,
             denied,
             requiresRsa,
-            requiresCoaseguro,
-            isApproved && !requiresRsa && !requiresCoaseguro && noFinalPayments,
+            requiresDeducible,
+            isApproved && !requiresRsa && !requiresDeducible && noFinalPayments,
             moreDocs,
             hasSignals);
     }

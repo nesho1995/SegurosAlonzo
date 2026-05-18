@@ -337,6 +337,7 @@ public class WhatsAppBandejaApiController : ControllerBase
         return combined.Contains("RSA", StringComparison.Ordinal)
             || combined.Contains("RESTITUCION", StringComparison.Ordinal)
             || combined.Contains("RESTITUIR", StringComparison.Ordinal)
+            || combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
             || combined.Contains("COASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO ASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO-SEGURO", StringComparison.Ordinal)

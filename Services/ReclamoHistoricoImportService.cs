@@ -25,8 +25,10 @@ public class ReclamoHistoricoImportService
         ["BOLETADECIRCULACION"] = "Boleta de circulacion",
         ["BOLETADECIRCULACIONOREVISION"] = "Boleta de circulacion",
         ["COTIZACIONES"] = "2 cotizaciones de talleres",
-        ["PAGODEDUCIBLE"] = "Pago de deducible",
-        ["PAGORSA"] = "Pago de RSA (restitucion de suma asegurada)"
+        ["PAGODEDUCIBLE"] = "Comprobante de deducible",
+        ["COMPROBANTEDEDEDUCIBLE"] = "Comprobante de deducible",
+        ["PAGORSA"] = "Comprobante de RSA",
+        ["COMPROBANTEDERSA"] = "Comprobante de RSA"
     };
 
     public ReclamoHistoricoImportService(ReclamoRepository reclamos)

@@ -6,8 +6,12 @@ const documentLabels: Record<string, string> = {
   INFORME_TALLER: 'Informe de taller',
   FINIQUITO: 'Finiquito',
   AVISO_ACCIDENTE: 'Aviso de accidente',
-  PAGO_DEDUCIBLE: 'Pago de deducible',
-  PAGO_RSA: 'Pago de RSA (restitucion de suma asegurada)',
+  PAGO_DEDUCIBLE: 'Comprobante de deducible',
+  COMPROBANTE_DE_DEDUCIBLE: 'Comprobante de deducible',
+  PAGO_RSA: 'Comprobante de RSA',
+  COMPROBANTE_DE_RSA: 'Comprobante de RSA',
+  PAGO_COASEGURO: 'Comprobante de deducible',
+  COMPROBANTE_DE_COASEGURO: 'Comprobante de deducible',
 }
 
 export function reclamoDocumentLabel(value?: string) {

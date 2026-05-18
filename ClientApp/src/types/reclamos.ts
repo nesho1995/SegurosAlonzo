@@ -18,6 +18,7 @@ export type ClaimItem = {
   montoAprobado?: number
   montoPagado?: number
   documentosPendientes?: number
+  descripcion?: string
   ciudadDetectada?: string
   tallerSugeridoId?: number
   tallerAsignadoId?: number

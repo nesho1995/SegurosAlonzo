@@ -348,7 +348,7 @@ Puede ingresar el vehiculo al taller.
 
 ---
 
-## 9. Respuesta cuando aplica RSA y coaseguro
+## 9. Respuesta cuando aplica RSA y deducible
 
 Si el reclamo es aprobado y el cliente debe presentar comprobantes finales, debe indicarse claramente.
 
@@ -360,8 +360,8 @@ Buenas tardes.
 El reclamo SAS-530-777 queda aprobado por la aseguradora.
 
 Para continuar con el cierre del reclamo, el cliente debe enviar:
-- Pago de RSA
-- Pago de coaseguro
+- Comprobante de RSA
+- Comprobante de deducible
 
 Saludos.
 ```
@@ -372,8 +372,9 @@ RSA significa:
 Restitucion de Suma Asegurada
 ```
 
-Coaseguro tambien puede indicarse como:
+El deducible tambien puede indicarse como:
 
+- Deducible.
 - Coaseguro.
 - Co seguro.
 - Co-seguro.
@@ -383,7 +384,7 @@ Coaseguro tambien puede indicarse como:
 
 ---
 
-## 10. Respuesta cuando no aplica RSA ni coaseguro
+## 10. Respuesta cuando no aplica RSA ni deducible
 
 Si el reclamo fue aprobado y el cliente no debe presentar pagos finales, debe indicarse expresamente.
 
@@ -394,7 +395,7 @@ Buenas tardes.
 
 El reclamo SAS-530-777 queda aprobado por la aseguradora.
 
-El cliente puede ingresar el vehiculo sin pago de RSA y sin pago de coaseguro.
+El cliente puede ingresar el vehiculo sin pago de RSA y sin pago de deducible.
 
 Saludos.
 ```
@@ -406,15 +407,15 @@ No requiere RSA.
 ```
 
 ```text
-No aplica coaseguro.
+No aplica deducible.
 ```
 
 ```text
-Sin pago de RSA y sin pago de coaseguro.
+Sin pago de RSA y sin pago de deducible.
 ```
 
 ```text
-No debe pagar RSA ni coaseguro.
+No debe pagar RSA ni deducible.
 ```
 
 ---
@@ -498,13 +499,13 @@ Cuando el cliente envie los comprobantes finales solicitados, la correduria pued
 El asunto puede ser:
 
 ```text
-Comprobantes finales de reclamo SAS-530-777 - RSA/coaseguro
+Comprobantes finales de reclamo SAS-530-777 - RSA/deducible
 ```
 
 En esta etapa se remiten unicamente los comprobantes finales correspondientes, por ejemplo:
 
-- Pago de RSA.
-- Pago de coaseguro.
+- Comprobante de RSA.
+- Comprobante de deducible.
 
 ---
 
@@ -527,7 +528,7 @@ Si aun falta algun comprobante:
 ```text
 Buenas tardes.
 
-Recibimos el pago de RSA, pero queda pendiente el pago de coaseguro.
+Recibimos el comprobante de RSA, pero queda pendiente el comprobante de deducible.
 
 Favor enviarlo para continuar con el cierre.
 
@@ -546,4 +547,3 @@ Para facilitar el seguimiento, se recomienda:
 - Indicar claramente si el reclamo fue aprobado, rechazado o si requiere informacion adicional.
 - Evitar respuestas demasiado cortas como `Ok`, `Enterado`, `Revisado` o `Proceder`.
 - No borrar el historial del correo cuando se responda.
-

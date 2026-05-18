@@ -349,13 +349,13 @@ public class ReclamosApiController : ControllerBase
         if (aprobado)
         {
             if (analysis.RequiereRsa)
-                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
-            if (analysis.RequiereCoaseguro)
-                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de coaseguro");
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de RSA");
+            if (analysis.RequiereDeducible)
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de deducible");
             if (analysis.SolicitaMasDocumentos)
                 await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Documento adicional solicitado por aseguradora");
 
-            if (analysis.RequiereRsa || analysis.RequiereCoaseguro)
+            if (analysis.RequiereRsa || analysis.RequiereDeducible)
             {
                 var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
                 var documentos = await _reclamos.GetDocumentosAsync(id);
@@ -373,11 +373,17 @@ public class ReclamosApiController : ControllerBase
             {
                 await _reclamos.MarcarTodosDocumentosAsync(id, recibido: true);
                 await _reclamos.UpdateEstadoAsync(id, "COMPLETO");
-                await _auditoria.RegistrarAsync("APROBACION_RECLAMO_SIN_PAGOS", "RECLAMO", id, "Aprobado sin RSA ni coaseguro pendientes.");
+                var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
+                var result = await _whatsApp.EnviarAprobacionSinPagosAsync(actualizado);
+                await _auditoria.RegistrarAsync(
+                    result.ok ? "AVISO_APROBACION_SIN_PAGOS_RECLAMO" : "ERROR_APROBACION_SIN_PAGOS_RECLAMO",
+                    "RECLAMO",
+                    id,
+                    result.ok ? "Cliente notificado que su reclamo fue aprobado sin comprobantes finales." : result.response);
             }
         }
 
-        await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes cuando aplican." : "Respuesta de aseguradora registrada.");
+        await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, aprobado ? "Aseguradora aprobo expediente; se habilitaron comprobantes finales cuando aplican." : "Respuesta de aseguradora registrada.");
         return NoContent();
     }
 

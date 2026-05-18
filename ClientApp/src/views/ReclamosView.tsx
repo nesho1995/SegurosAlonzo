@@ -173,7 +173,7 @@ export function ReclamosView() {
     await runAction(async () => {
       await registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado)
       setInsurerFormDirty(false)
-    }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron RSA/coaseguro si aplican.' : 'Respuesta de aseguradora guardada.')
+    }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron comprobantes de RSA/deducible si aplican.' : 'Respuesta de aseguradora guardada.')
   }
 
   function confirmCompleteAndSend() {
@@ -223,6 +223,9 @@ export function ReclamosView() {
                   <div className="info-item"><span>Motivo sugerencia</span><strong>{selected.motivoSugerenciaTaller || 'Sin sugerencia'}</strong></div>
                   <div className="info-item"><span>WhatsApp</span><strong>{statusLabel(selected.estadoReclamo || selected.estado)}</strong></div>
                 </div>
+                {selected.descripcion && (
+                  <div className="inline-alert info" style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>{selected.descripcion}</div>
+                )}
                 <div className="action-row reclamo-actions">
                   <button className="icon-button secondary" disabled={actionBusy} onClick={() => void runAction(() => solicitarDocumentosReclamo(selected.id), 'Reclamo marcado con documentos pendientes.')}>
                     <FileText size={16} />Documentos pendientes
@@ -301,7 +304,7 @@ export function ReclamosView() {
                     </button>
                   </div>
                 </AccordionSection>
-                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir RSA/coaseguro o documentos adicionales.">
+                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir RSA/deducible o documentos adicionales.">
                   <div className="insurer-box">
                     <label className="wide-field">
                       <span>Correo o respuesta recibida</span>

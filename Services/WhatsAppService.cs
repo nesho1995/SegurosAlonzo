@@ -394,8 +394,11 @@ Atentamente.".Trim();
             .Where(x =>
                 x.Contains("RSA", StringComparison.OrdinalIgnoreCase)
                 || x.Contains("restitucion", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("deducible", StringComparison.OrdinalIgnoreCase)
                 || x.Contains("coaseguro", StringComparison.OrdinalIgnoreCase)
                 || x.Contains("co seguro", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("copago", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("comprobante", StringComparison.OrdinalIgnoreCase)
                 || x.Contains("adicional", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -432,6 +435,23 @@ Atentamente.".Trim();
         }
 
         return await EnviarRecordatorioAsync(r, documentosPendientes);
+    }
+
+    public async Task<(bool ok, string response)> EnviarAprobacionSinPagosAsync(ReclamoWhatsApp r)
+    {
+        var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
+        var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
+        var mensaje = $@"Buenas tardes {nombre}.
+
+Le informamos que su reclamo {referencia} fue aprobado por la aseguradora.
+
+En esta aprobacion no se solicito comprobante de RSA ni comprobante de deducible. Puede continuar con el ingreso o seguimiento indicado por la aseguradora.
+
+Nos mantenemos atentos para apoyarle con cualquier avance del tramite.
+
+Atentamente.".Trim();
+
+        return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
 
     public async Task<(bool ok, string response)> EnviarDocumentosRecibidosAsync(ReclamoWhatsApp r)

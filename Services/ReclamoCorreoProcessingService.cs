@@ -59,10 +59,17 @@ public class ReclamoCorreoProcessingService
             {
                 try
                 {
-                    if (string.Equals(await _correoRevision.GetEstadoAsync(email.MessageId), "ASOCIADO", StringComparison.OrdinalIgnoreCase))
+                    var estadoCorreo = await _correoRevision.GetEstadoAsync(email.MessageId);
+                    if (string.Equals(estadoCorreo, "ASOCIADO", StringComparison.OrdinalIgnoreCase))
                     {
                         estado.CorreosDuplicados++;
                         estado.Detalles.Add(Detalle(email, "DUPLICADO", "Esta respuesta de aseguradora ya fue asociada anteriormente."));
+                        continue;
+                    }
+                    if (string.Equals(estadoCorreo, "PROCESADO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        estado.CorreosDuplicados++;
+                        estado.Detalles.Add(Detalle(email, "DUPLICADO", "Ya existe un reclamo creado con este MessageId."));
                         continue;
                     }
 
@@ -182,10 +189,10 @@ public class ReclamoCorreoProcessingService
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
 
         if (analysis.RequiereRsa)
-            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de RSA (restitucion de suma asegurada)");
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de RSA");
 
-        if (analysis.RequiereCoaseguro)
-            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Pago de coaseguro");
+        if (analysis.RequiereDeducible)
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de deducible");
 
         if (analysis.SolicitaMasDocumentos)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Documento adicional solicitado por aseguradora");
@@ -194,15 +201,15 @@ public class ReclamoCorreoProcessingService
         if (analysis.Aprobado)
             acciones.Add("Se marco como aprobado por aseguradora.");
         if (analysis.RequiereRsa)
-            acciones.Add("Se habilito seguimiento de pago de RSA.");
-        if (analysis.RequiereCoaseguro)
-            acciones.Add("Se habilito seguimiento de pago de coaseguro.");
+            acciones.Add("Se habilito seguimiento de comprobante de RSA.");
+        if (analysis.RequiereDeducible)
+            acciones.Add("Se habilito seguimiento de comprobante de deducible.");
         if (analysis.AprobadoSinPagosFinales)
             acciones.Add("Aprobado sin pagos finales pendientes; el cliente puede ingresar el vehiculo.");
         if (analysis.SolicitaMasDocumentos)
             acciones.Add("La aseguradora solicito documento o informacion adicional.");
 
-        if (analysis.RequiereRsa || analysis.RequiereCoaseguro)
+        if (analysis.RequiereRsa || analysis.RequiereDeducible)
         {
             var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
             var pendientes = await _repo.GetDocumentosAsync(reclamo.Id);
@@ -220,6 +227,9 @@ public class ReclamoCorreoProcessingService
         {
             await _repo.MarcarTodosDocumentosAsync(reclamo.Id, recibido: true);
             await _repo.UpdateEstadoAsync(reclamo.Id, "COMPLETO");
+            var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
+            var envio = await _whatsApp.EnviarAprobacionSinPagosAsync(actualizado);
+            acciones.Add(envio.ok ? "Cliente notificado por WhatsApp: aprobado sin pagos finales." : $"No se pudo notificar al cliente: {envio.response}");
         }
 
         estado.ReclamosValidos++;
@@ -256,102 +266,12 @@ public class ReclamoCorreoProcessingService
         return reference.Length >= 5 && normalizedText.Contains(reference, StringComparison.Ordinal);
     }
 
-    private static InsuranceResponseAnalysis AnalyzeInsuranceResponse(EmailMessageDto email)
-    {
-        var text = NormalizeForMatch($"{email.Subject}\n{email.Body}");
-        var denied = ContainsAny(text, "NO APROBADO", "NO APROBADA", "RECHAZADO", "RECHAZADA", "DECLINADO", "DECLINADA", "NO PROCEDE", "IMPROCEDENTE", "SIN COBERTURA");
-        var approved = !denied && ContainsAny(text,
-            "APROBADO",
-            "APROBADA",
-            "APROBACION",
-            "APROBACIÓN",
-            "ACEPTADO",
-            "ACEPTADA",
-            "PROCEDENTE",
-            "AUTORIZADO",
-            "AUTORIZADA",
-            "AUTORIZAMOS",
-            "SE AUTORIZA",
-            "PUEDE INGRESAR",
-            "INGRESAR EL VEHICULO",
-            "INGRESAR LA UNIDAD",
-            "INGRESO DEL VEHICULO",
-            "INGRESO DE LA UNIDAD",
-            "PROCEDER CON LA REPARACION",
-            "PROCEDER CON REPARACION");
-        var rsa = ContainsAny(text, "RSA", "RESTITUCION DE SUMA ASEGURADA", "RESTITUCION SUMA ASEGURADA");
-        var coaseguro = ContainsAny(text, "COASEGURO", "CO ASEGURO");
-        var noFinalPayments = ContainsAny(text,
-            "SIN PAGO DE RSA",
-            "NO REQUIERE RSA",
-            "NO APLICA RSA",
-            "SIN RSA",
-            "SIN PAGO DE COASEGURO",
-            "NO REQUIERE COASEGURO",
-            "NO REQUIERE CO ASEGURO",
-            "NO APLICA COASEGURO",
-            "NO APLICA CO ASEGURO",
-            "SIN COASEGURO",
-            "SIN CO ASEGURO",
-            "SIN PAGAR COASEGURO",
-            "SIN PAGAR CO ASEGURO",
-            "PUEDE INGRESAR EL CARRO",
-            "PUEDE INGRESAR EL VEHICULO",
-            "PUEDE INGRESAR LA UNIDAD");
-        var moreDocs = ContainsAny(
-            text,
-            "DOCUMENTO ADICIONAL",
-            "DOCUMENTOS ADICIONALES",
-            "DOCUMENTACION ADICIONAL",
-            "DOCUMENTACION PENDIENTE",
-            "FALTA DOCUMENTO",
-            "FALTAN DOCUMENTOS",
-            "HACE FALTA",
-            "NECESITAMOS",
-            "SE REQUIERE",
-            "REQUERIMOS",
-            "PENDIENTE DE RECIBIR",
-            "AMPLIAR INFORMACION",
-            "INFORMACION ADICIONAL",
-            "ENVIAR NUEVAMENTE",
-            "CORREGIR");
-
-        var requiresRsa = rsa && !ContainsAny(text, "NO REQUIERE RSA", "NO APLICA RSA", "SIN RSA", "SIN PAGO DE RSA");
-        var requiresCoaseguro = coaseguro && !ContainsAny(text, "NO REQUIERE COASEGURO", "NO REQUIERE CO ASEGURO", "NO APLICA COASEGURO", "NO APLICA CO ASEGURO", "SIN COASEGURO", "SIN CO ASEGURO", "SIN PAGO DE COASEGURO", "SIN PAGO DE CO ASEGURO");
-        var isApproved = approved || (!denied && (requiresRsa || requiresCoaseguro));
-        return new InsuranceResponseAnalysis(isApproved, requiresRsa, requiresCoaseguro, isApproved && !requiresRsa && !requiresCoaseguro && noFinalPayments, !isApproved && moreDocs);
-    }
-
-    private static bool ContainsAny(string text, params string[] values)
-    {
-        return values.Any(value => text.Contains(value, StringComparison.Ordinal));
-    }
-
     private static string BuildInsuranceResponseText(EmailMessageDto email)
     {
         var body = string.IsNullOrWhiteSpace(email.Body) ? "(sin cuerpo)" : email.Body.Trim();
         var text = $"Asunto: {email.Subject}\n\n{body}";
         return text.Length <= 8000 ? text : text[..8000];
     }
-
-    private static string NormalizeForMatch(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return "";
-
-        var normalized = value.Trim().ToUpperInvariant()
-            .Replace('Á', 'A')
-            .Replace('É', 'E')
-            .Replace('Í', 'I')
-            .Replace('Ó', 'O')
-            .Replace('Ú', 'U')
-            .Replace('Ü', 'U')
-            .Replace('Ñ', 'N');
-
-        return normalized;
-    }
-
-    private sealed record InsuranceResponseAnalysis(bool Aprobado, bool RequiereRsa, bool RequiereCoaseguro, bool AprobadoSinPagosFinales, bool SolicitaMasDocumentos);
 
     private async Task SafeAutomationAsync(string evento, string entidadTipo, int entidadId, object data)
     {
