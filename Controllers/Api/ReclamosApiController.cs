@@ -274,7 +274,9 @@ public class ReclamosApiController : ControllerBase
         var documentos = (await _documentos.GetByEntidadAsync("RECLAMO", id)).ToList();
         var destino = string.IsNullOrWhiteSpace(request.CorreoAseguradora) ? reclamo.CorreoAseguradoraPrincipal : request.CorreoAseguradora;
         var copia = string.IsNullOrWhiteSpace(request.CorreoCopia) ? reclamo.CorreoAseguradoraCopia : request.CorreoCopia;
-        var result = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, destino ?? "", documentos, copia);
+        var soloFinales = IsPostApprovalStage(reclamo);
+        var documentosEnviar = soloFinales ? documentos.Where(IsComprobanteFinal).ToList() : documentos;
+        var result = await _emailSender.EnviarDocumentosReclamoAsync(reclamo, destino ?? "", documentosEnviar, copia, soloFinales);
         await _auditoria.RegistrarAsync(result.ok ? "ENVIAR_DOCUMENTOS_ASEGURADORA" : "ERROR_ENVIAR_DOCUMENTOS_ASEGURADORA", "RECLAMO", id, result.ok ? $"Documentos enviados a {destino}." : result.response);
         return Ok(new { result.ok, result.response });
     }
@@ -341,28 +343,33 @@ public class ReclamosApiController : ControllerBase
         if (reclamo is null)
             return NotFound();
 
-        await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, request.Aprobado);
-        if (request.Aprobado)
+        var analysis = InsuranceResponseAnalyzer.Analyze(request.Respuesta);
+        var aprobado = request.Aprobado || analysis.Aprobado;
+        await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, aprobado);
+        if (aprobado)
         {
-            var respuestaNormalizada = NormalizeDocumentText(request.Respuesta);
-            var requiereRsa = respuestaNormalizada.Contains("RSA", StringComparison.Ordinal)
-                || respuestaNormalizada.Contains("RESTITUCION", StringComparison.Ordinal);
-            var requiereCoaseguro = respuestaNormalizada.Contains("COASEGURO", StringComparison.Ordinal)
-                || respuestaNormalizada.Contains("CO ASEGURO", StringComparison.Ordinal);
-
-            if (requiereRsa)
+            if (analysis.RequiereRsa)
                 await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de RSA (restitucion de suma asegurada)");
-            if (requiereCoaseguro)
+            if (analysis.RequiereCoaseguro)
                 await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Pago de coaseguro");
+            if (analysis.SolicitaMasDocumentos)
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Documento adicional solicitado por aseguradora");
 
-            if (requiereRsa || requiereCoaseguro)
+            if (analysis.RequiereRsa || analysis.RequiereCoaseguro)
+            {
+                var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
+                var documentos = await _reclamos.GetDocumentosAsync(id);
+                var result = await _whatsApp.EnviarSolicitudPagosAprobacionAsync(actualizado, documentos);
+                await _auditoria.RegistrarAsync(result.ok ? "AVISO_APROBACION_RECLAMO" : "ERROR_AVISO_APROBACION_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar comprobantes finales." : result.response);
+            }
+            else if (analysis.SolicitaMasDocumentos)
             {
                 var actualizado = await _reclamos.GetByIdAsync(id) ?? reclamo;
                 var documentos = await _reclamos.GetDocumentosAsync(id);
                 var result = await _whatsApp.EnviarRecordatorioAsync(actualizado, documentos);
-                await _auditoria.RegistrarAsync(result.ok ? "AVISO_APROBACION_RECLAMO" : "ERROR_AVISO_APROBACION_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar comprobantes finales." : result.response);
+                await _auditoria.RegistrarAsync(result.ok ? "AVISO_DOCUMENTO_ADICIONAL_RECLAMO" : "ERROR_DOCUMENTO_ADICIONAL_RECLAMO", "RECLAMO", id, result.ok ? "Cliente notificado para enviar documento adicional." : result.response);
             }
-            else
+            else if (analysis.AprobadoSinPagosFinales || !analysis.SolicitaMasDocumentos)
             {
                 await _reclamos.MarcarTodosDocumentosAsync(id, recibido: true);
                 await _reclamos.UpdateEstadoAsync(id, "COMPLETO");
@@ -370,7 +377,7 @@ public class ReclamosApiController : ControllerBase
             }
         }
 
-        await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, request.Aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes." : "Respuesta de aseguradora registrada.");
+        await _auditoria.RegistrarAsync("RESPUESTA_ASEGURADORA_RECLAMO", "RECLAMO", id, aprobado ? "Aseguradora aprobo expediente; se habilitaron pagos pendientes cuando aplican." : "Respuesta de aseguradora registrada.");
         return NoContent();
     }
 

@@ -15,6 +15,7 @@ public class WhatsAppConfig
     public string ReclamoInitialTemplateName { get; set; } = "";
     public string ReclamoReminderTemplateName { get; set; } = "";
     public string ReclamoCompleteTemplateName { get; set; } = "";
+    public string ReclamoApprovedPaymentsTemplateName { get; set; } = "";
     public string LanguageCode { get; set; } = "es";
     public string AdminWhatsAppNumber { get; set; } = "";
     /// <summary>

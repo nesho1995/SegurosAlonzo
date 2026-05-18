@@ -293,7 +293,7 @@ Para poder avanzar con la gestion debe completar la siguiente documentacion:
 
 {talleres}
 
-Una vez se entregue completa la informacion, se evaluara la cobertura y la aplicacion de deducibles.
+Una vez se entregue completa la informacion, se evaluara la cobertura y cualquier requisito final que indique la aseguradora.
 
 Atentamente.";
 
@@ -383,6 +383,55 @@ Atentamente.".Trim();
         }
 
         return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
+    }
+
+    public async Task<(bool ok, string response)> EnviarSolicitudPagosAprobacionAsync(ReclamoWhatsApp r, IEnumerable<ReclamoDocumento>? documentosPendientes = null)
+    {
+        var pendientes = (documentosPendientes ?? [])
+            .Where(x => !x.Recibido)
+            .Select(x => x.Documento)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(x =>
+                x.Contains("RSA", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("restitucion", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("coaseguro", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("co seguro", StringComparison.OrdinalIgnoreCase)
+                || x.Contains("adicional", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (pendientes.Count == 0)
+            return (false, "No hay pagos finales pendientes para solicitar al cliente.");
+
+        var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
+        var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
+        var documentos = pendientes.Select((doc, index) => $"{index + 1}. {doc}").ToList();
+        var lista = string.Join(Environment.NewLine, documentos);
+        var mensaje = $@"Buenas tardes {nombre}.
+
+Le informamos que su reclamo {referencia} fue aprobado por la aseguradora.
+
+Para finalizar y continuar con el proceso, por favor envienos:
+
+{lista}
+
+Cuando recibamos estos comprobantes, los remitiremos a la aseguradora para seguimiento del cierre.
+
+Atentamente.".Trim();
+
+        var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
+        if (!string.IsNullOrWhiteSpace(config.ReclamoApprovedPaymentsTemplateName))
+        {
+            return await SendWhatsAppTemplateAsync(
+                r.Celular ?? "",
+                config.ReclamoApprovedPaymentsTemplateName,
+                config.LanguageCode,
+                config,
+                BuildReminderTemplateParameters(nombre, referencia, documentos),
+                mensaje);
+        }
+
+        return await EnviarRecordatorioAsync(r, documentosPendientes);
     }
 
     public async Task<(bool ok, string response)> EnviarDocumentosRecibidosAsync(ReclamoWhatsApp r)

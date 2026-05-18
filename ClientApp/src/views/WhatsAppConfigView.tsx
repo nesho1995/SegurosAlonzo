@@ -17,6 +17,7 @@ const emptyConfig: WhatsAppConfig = {
   reclamoInitialTemplateName: '',
   reclamoReminderTemplateName: '',
   reclamoCompleteTemplateName: '',
+  reclamoApprovedPaymentsTemplateName: '',
   languageCode: 'es',
   adminWhatsAppNumber: '',
   webhookVerifyToken: '',
@@ -221,6 +222,15 @@ export function WhatsAppConfigView() {
                   placeholder="reclamo_documentos_completos_es"
                   value={config.reclamoCompleteTemplateName}
                   onChange={e => setConfig({ ...config, reclamoCompleteTemplateName: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Plantilla aprobado con pagos</span>
+                <input
+                  placeholder="params_reclamo_aprobado_pagos_v2_es"
+                  value={config.reclamoApprovedPaymentsTemplateName}
+                  onChange={e => setConfig({ ...config, reclamoApprovedPaymentsTemplateName: e.target.value })}
                 />
               </label>
 

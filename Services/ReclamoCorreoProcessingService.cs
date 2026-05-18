@@ -66,7 +66,8 @@ public class ReclamoCorreoProcessingService
                         continue;
                     }
 
-                    if (!await _extractor.EsCorreoDeReclamoAsync(email.Subject))
+                    var esCorreoDeReclamo = await _extractor.EsCorreoDeReclamoAsync(email.Subject);
+                    if (!esCorreoDeReclamo)
                     {
                         if (await TryProcessRespuestaAseguradoraAsync(email, estado))
                             continue;
@@ -94,6 +95,9 @@ public class ReclamoCorreoProcessingService
 
                     if (await _repo.ExistsByClaimReferenceAsync(reclamo.Reclamo ?? reclamo.NumeroReclamo, reclamo.Placa))
                     {
+                        if (await TryProcessRespuestaAseguradoraAsync(email, estado, requireInsuranceSignals: true))
+                            continue;
+
                         estado.CorreosDuplicados++;
                         await RegistrarDetalleAsync(estado, email, "DUPLICADO", "Ya existe un reclamo con el mismo numero de reclamo y placa.");
                         continue;
@@ -165,13 +169,16 @@ public class ReclamoCorreoProcessingService
         await _correoRevision.UpsertAsync(detalle, email.Body);
     }
 
-    private async Task<bool> TryProcessRespuestaAseguradoraAsync(EmailMessageDto email, ReclamoWorkerEstado estado)
+    private async Task<bool> TryProcessRespuestaAseguradoraAsync(EmailMessageDto email, ReclamoWorkerEstado estado, bool requireInsuranceSignals = false)
     {
         var reclamo = await FindReferencedClaimAsync(email);
         if (reclamo is null)
             return false;
 
-        var analysis = AnalyzeInsuranceResponse(email);
+        var analysis = InsuranceResponseAnalyzer.Analyze(email);
+        if (requireInsuranceSignals && !analysis.TieneSenales)
+            return false;
+
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
 
         if (analysis.RequiereRsa)
@@ -195,7 +202,14 @@ public class ReclamoCorreoProcessingService
         if (analysis.SolicitaMasDocumentos)
             acciones.Add("La aseguradora solicito documento o informacion adicional.");
 
-        if (analysis.RequiereRsa || analysis.RequiereCoaseguro || analysis.SolicitaMasDocumentos)
+        if (analysis.RequiereRsa || analysis.RequiereCoaseguro)
+        {
+            var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
+            var pendientes = await _repo.GetDocumentosAsync(reclamo.Id);
+            var envio = await _whatsApp.EnviarSolicitudPagosAprobacionAsync(actualizado, pendientes);
+            acciones.Add(envio.ok ? "Cliente notificado por WhatsApp para pagos finales." : $"No se pudo notificar al cliente: {envio.response}");
+        }
+        else if (analysis.SolicitaMasDocumentos)
         {
             var actualizado = await _repo.GetByIdAsync(reclamo.Id) ?? reclamo;
             var pendientes = await _repo.GetDocumentosAsync(reclamo.Id);
@@ -215,22 +229,30 @@ public class ReclamoCorreoProcessingService
 
     private async Task<ReclamoWhatsApp?> FindReferencedClaimAsync(EmailMessageDto email)
     {
-        var text = NormalizeForMatch($"{email.Subject}\n{email.Body}");
+        var text = InsuranceResponseAnalyzer.NormalizeForMatch($"{email.Subject}\n{email.Body}");
         if (string.IsNullOrWhiteSpace(text))
             return null;
 
         var reclamos = await _repo.GetAllAsync();
-        return reclamos
-            .Where(r => ContainsReference(text, r.Reclamo)
-                || ContainsReference(text, r.NumeroReclamo)
-                || ContainsReference(text, r.Placa))
+        var byClaimNumber = reclamos
+            .Where(r => ContainsReference(text, r.Reclamo) || ContainsReference(text, r.NumeroReclamo))
             .OrderByDescending(r => r.FechaCreacion)
             .FirstOrDefault();
+        if (byClaimNumber is not null)
+            return byClaimNumber;
+
+        var byPlate = reclamos
+            .Where(r => ContainsReference(text, r.Placa))
+            .OrderByDescending(r => r.FechaCreacion)
+            .Take(2)
+            .ToList();
+
+        return byPlate.Count == 1 ? byPlate[0] : null;
     }
 
     private static bool ContainsReference(string normalizedText, string? value)
     {
-        var reference = NormalizeForMatch(value);
+        var reference = InsuranceResponseAnalyzer.NormalizeForMatch(value);
         return reference.Length >= 5 && normalizedText.Contains(reference, StringComparison.Ordinal);
     }
 

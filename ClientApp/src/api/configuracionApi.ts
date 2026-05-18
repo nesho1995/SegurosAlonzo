@@ -35,6 +35,7 @@ export type WhatsAppConfig = {
   reclamoInitialTemplateName: string
   reclamoReminderTemplateName: string
   reclamoCompleteTemplateName: string
+  reclamoApprovedPaymentsTemplateName: string
   languageCode: string
   adminWhatsAppNumber: string
   webhookVerifyToken: string

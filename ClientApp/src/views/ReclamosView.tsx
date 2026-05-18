@@ -46,6 +46,7 @@ export function ReclamosView() {
   const [correoCopia, setCorreoCopia] = useState('')
   const [respuestaAseguradora, setRespuestaAseguradora] = useState('')
   const [aseguradoraAprobado, setAseguradoraAprobado] = useState(false)
+  const [insurerFormDirty, setInsurerFormDirty] = useState(false)
 
   async function aceptarExcepcionDocumento(doc: ClaimPendingDocument) {
     if (!selected) return
@@ -103,6 +104,7 @@ export function ReclamosView() {
     setCorreoCopia(selected.correoAseguradoraCopia || '')
     setRespuestaAseguradora(selected.respuestaAseguradora || '')
     setAseguradoraAprobado(Boolean(selected.aseguradoraAprobado))
+    setInsurerFormDirty(false)
     getReclamoChecklist(selected.id, selected.tipoReclamo)
       .then((res) => {
         setChecklist(res.requisitos)
@@ -113,7 +115,10 @@ export function ReclamosView() {
         setChecklistPendientes(0)
       })
     getReclamoDocumentosPendientes(selected.id)
-      .then((res) => setDocumentosPendientes(res.items))
+      .then((res) => {
+        setDocumentosPendientes(res.items)
+        setChecklistPendientes(res.pendientes)
+      })
       .catch(() => setDocumentosPendientes([]))
   }, [selected])
 
@@ -121,6 +126,7 @@ export function ReclamosView() {
     if (!selected) return
     const docs = await getReclamoDocumentosPendientes(selected.id)
     setDocumentosPendientes(docs.items)
+    setChecklistPendientes(docs.pendientes)
     const query = new URLSearchParams({ estado })
     if (buscar.trim()) query.set('buscar', buscar.trim())
     const response = await getReclamos(query)
@@ -132,7 +138,7 @@ export function ReclamosView() {
     if (actionBusy) return
     if (selected) await refreshSelected()
     else await load()
-  }, 10000, !actionBusy)
+  }, 10000, !actionBusy && !insurerFormDirty)
 
   async function runAction(action: () => Promise<unknown>, success: string) {
     setActionBusy(true)
@@ -156,12 +162,18 @@ export function ReclamosView() {
 
   async function saveInsurerEmails() {
     if (!selected) return
-    await runAction(() => updateCorreosAseguradora(selected.id, correoAseguradora, correoCopia), 'Correos de aseguradora guardados.')
+    await runAction(async () => {
+      await updateCorreosAseguradora(selected.id, correoAseguradora, correoCopia)
+      setInsurerFormDirty(false)
+    }, 'Correos de aseguradora guardados.')
   }
 
   async function saveInsurerResponse() {
     if (!selected) return
-    await runAction(() => registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado), aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron deducible y RSA.' : 'Respuesta de aseguradora guardada.')
+    await runAction(async () => {
+      await registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado)
+      setInsurerFormDirty(false)
+    }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron RSA/coaseguro si aplican.' : 'Respuesta de aseguradora guardada.')
   }
 
   function confirmCompleteAndSend() {
@@ -275,11 +287,11 @@ export function ReclamosView() {
                   <div className="insurer-box">
                     <label className="field compact-field">
                       <span>Correo principal</span>
-                      <input value={correoAseguradora} onChange={(event) => setCorreoAseguradora(event.target.value)} placeholder="correo@aseguradora.com" />
+                      <input value={correoAseguradora} onChange={(event) => { setInsurerFormDirty(true); setCorreoAseguradora(event.target.value) }} placeholder="correo@aseguradora.com" />
                     </label>
                     <label className="field compact-field">
                       <span>Correo copia</span>
-                      <input value={correoCopia} onChange={(event) => setCorreoCopia(event.target.value)} placeholder="copia@correo.com" />
+                      <input value={correoCopia} onChange={(event) => { setInsurerFormDirty(true); setCorreoCopia(event.target.value) }} placeholder="copia@correo.com" />
                     </label>
                     <button className="icon-button secondary" disabled={actionBusy} onClick={() => void saveInsurerEmails()}>
                       Guardar correos
@@ -289,14 +301,14 @@ export function ReclamosView() {
                     </button>
                   </div>
                 </AccordionSection>
-                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir deducible y RSA.">
+                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir RSA/coaseguro o documentos adicionales.">
                   <div className="insurer-box">
                     <label className="wide-field">
                       <span>Correo o respuesta recibida</span>
-                      <textarea value={respuestaAseguradora} rows={5} onChange={(event) => setRespuestaAseguradora(event.target.value)} placeholder="Pega aqui la respuesta de la aseguradora." />
+                      <textarea value={respuestaAseguradora} rows={5} onChange={(event) => { setInsurerFormDirty(true); setRespuestaAseguradora(event.target.value) }} placeholder="Pega aqui la respuesta de la aseguradora." />
                     </label>
                     <label className="check-field">
-                      <input type="checkbox" checked={aseguradoraAprobado} onChange={(event) => setAseguradoraAprobado(event.target.checked)} />
+                      <input type="checkbox" checked={aseguradoraAprobado} onChange={(event) => { setInsurerFormDirty(true); setAseguradoraAprobado(event.target.checked) }} />
                       Expediente aprobado por aseguradora
                     </label>
                     <button className="icon-button" disabled={actionBusy} onClick={() => void saveInsurerResponse()}>
