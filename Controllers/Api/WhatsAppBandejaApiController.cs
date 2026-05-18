@@ -330,14 +330,21 @@ public class WhatsAppBandejaApiController : ControllerBase
 
     private static bool IsComprobanteFinal(DocumentoDto documento)
     {
-        var tipo = NormalizeDocumentText(documento.TipoDocumento);
-        var nombre = NormalizeDocumentText(documento.NombreArchivoOriginal);
-        var observacion = NormalizeDocumentText(documento.Observacion);
+        var tipo = InsuranceResponseAnalyzer.NormalizeForMatch(documento.TipoDocumento);
+        var nombre = InsuranceResponseAnalyzer.NormalizeForMatch(documento.NombreArchivoOriginal);
+        var observacion = InsuranceResponseAnalyzer.NormalizeForMatch(documento.Observacion);
         var combined = $"{tipo} {nombre} {observacion}";
         return combined.Contains("RSA", StringComparison.Ordinal)
             || combined.Contains("RESTITUCION", StringComparison.Ordinal)
+            || combined.Contains("RESTITUIR", StringComparison.Ordinal)
             || combined.Contains("COASEGURO", StringComparison.Ordinal)
-            || combined.Contains("CO ASEGURO", StringComparison.Ordinal);
+            || combined.Contains("CO ASEGURO", StringComparison.Ordinal)
+            || combined.Contains("CO-SEGURO", StringComparison.Ordinal)
+            || combined.Contains("COPAGO", StringComparison.Ordinal)
+            || combined.Contains("CO PAGO", StringComparison.Ordinal)
+            || combined.Contains("CO-PAGO", StringComparison.Ordinal)
+            || combined.Contains("COPARTICIPACION", StringComparison.Ordinal)
+            || combined.Contains("PARTICIPACION DEL ASEGURADO", StringComparison.Ordinal);
     }
 
     private static string NormalizeDocumentText(string? value)

@@ -16,11 +16,15 @@ public class AuthApiController : ControllerBase
 {
     private readonly UserRepository _users;
     private readonly AuditoriaService _auditoria;
+    private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
 
-    public AuthApiController(UserRepository users, AuditoriaService auditoria)
+    public AuthApiController(UserRepository users, AuditoriaService auditoria, IWebHostEnvironment environment, IConfiguration configuration)
     {
         _users = users;
         _auditoria = auditoria;
+        _environment = environment;
+        _configuration = configuration;
     }
 
     [HttpPost("login")]
@@ -33,7 +37,9 @@ public class AuthApiController : ControllerBase
             return BadRequest(new { error = "Ingresa usuario y contrasena." });
 
         var user = await _users.GetUserByUsernameAsync(username, includeInactive: true);
-        if (user is null && username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        if (user is null
+            && username.Equals("admin", StringComparison.OrdinalIgnoreCase)
+            && (_environment.IsDevelopment() || _configuration.GetValue<bool>("Security:AllowDefaultAdminBootstrap")))
         {
             var adminRoleId = await _users.EnsureRoleAsync("ADMIN");
             await _users.CreateUserAsync("admin", BCrypt.Net.BCrypt.HashPassword("admin123"), adminRoleId);
