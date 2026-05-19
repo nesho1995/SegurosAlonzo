@@ -157,7 +157,11 @@ public class ReclamoHistoricoImportService
         foreach (var doc in DocumentMap)
         {
             var raw = Get(row, headers, doc.Key);
-            item.DocumentosRecibidos[doc.Value] = IsReceived(raw);
+            var recibido = IsReceived(raw);
+            if (item.DocumentosRecibidos.TryGetValue(doc.Value, out var yaRecibido))
+                item.DocumentosRecibidos[doc.Value] = yaRecibido || recibido;
+            else
+                item.DocumentosRecibidos[doc.Value] = recibido;
         }
 
         foreach (var final in DetectarComprobantesFinales(item))
