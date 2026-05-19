@@ -408,7 +408,8 @@ public class AppSettingsRepository
             Username = username,
             Password = Get(nameof(SmtpConfig.Password), configuration["Smtp:Password"] ?? configuration["Email:Password"] ?? ""),
             FromAddress = Get(nameof(SmtpConfig.FromAddress), configuration["Smtp:From"] ?? username),
-            FromName = Get(nameof(SmtpConfig.FromName), configuration["Smtp:FromName"] ?? "Reclamos")
+            FromName = Get(nameof(SmtpConfig.FromName), configuration["Smtp:FromName"] ?? "Reclamos"),
+            InternalCopyEmails = Get(nameof(SmtpConfig.InternalCopyEmails), configuration["Smtp:InternalCopyEmails"] ?? "")
         };
     }
 
@@ -433,7 +434,8 @@ public class AppSettingsRepository
             [nameof(config.Username)] = config.Username?.Trim() ?? "",
             [nameof(config.Password)] = password,
             [nameof(config.FromAddress)] = string.IsNullOrWhiteSpace(config.FromAddress) ? (config.Username?.Trim() ?? "") : config.FromAddress.Trim(),
-            [nameof(config.FromName)] = string.IsNullOrWhiteSpace(config.FromName) ? "Reclamos" : config.FromName.Trim()
+            [nameof(config.FromName)] = string.IsNullOrWhiteSpace(config.FromName) ? "Reclamos" : config.FromName.Trim(),
+            [nameof(config.InternalCopyEmails)] = config.InternalCopyEmails?.Trim() ?? ""
         };
 
         foreach (var item in values)

@@ -49,6 +49,10 @@ export function updateCorreosAseguradora(id: number, principal?: string, copia?:
   return requestJson(`/api/reclamos/${id}/correos-aseguradora`, 'PUT', { principal, copia })
 }
 
+export function updateDatosBasicosReclamo(id: number, poliza?: string, reclamo?: string, placa?: string, celular?: string, ciudad?: string) {
+  return requestJson(`/api/reclamos/${id}/datos-basicos`, 'PUT', { poliza, reclamo, placa, celular, ciudad })
+}
+
 export function registrarRespuestaAseguradora(id: number, respuesta: string, aprobado: boolean) {
   return postJson(`/api/reclamos/${id}/respuesta-aseguradora`, { respuesta, aprobado })
 }

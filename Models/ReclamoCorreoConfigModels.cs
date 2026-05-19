@@ -38,6 +38,7 @@ public class SmtpConfig
     public string Password { get; set; } = "";
     public string FromAddress { get; set; } = "";
     public string FromName { get; set; } = "Reclamos";
+    public string InternalCopyEmails { get; set; } = "";
 }
 
 public class SmtpConfigDto
@@ -50,6 +51,7 @@ public class SmtpConfigDto
     public string PasswordMasked { get; set; } = "";
     public string FromAddress { get; set; } = "";
     public string FromName { get; set; } = "Reclamos";
+    public string InternalCopyEmails { get; set; } = "";
 }
 
 public class ReclamoWorkerEstado

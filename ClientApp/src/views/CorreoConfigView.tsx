@@ -240,6 +240,7 @@ export function CorreoConfigView() {
             <Field label={`Password SMTP${smtpConfig.passwordMasked ? ' configurado' : ''}`} type="password" value={smtpConfig.password || ''} onChange={(v) => setSmtpConfig({ ...smtpConfig, password: v })} />
             <Field label="Remitente" value={smtpConfig.fromAddress} onChange={(v) => setSmtpConfig({ ...smtpConfig, fromAddress: v })} />
             <Field label="Nombre remitente" value={smtpConfig.fromName} onChange={(v) => setSmtpConfig({ ...smtpConfig, fromName: v })} />
+            <Field label="Copias internas" value={smtpConfig.internalCopyEmails || ''} onChange={(v) => setSmtpConfig({ ...smtpConfig, internalCopyEmails: v })} />
             <div className="form-actions">
               <button className="primary-button" disabled={!!busyAction} onClick={() => void saveSmtpConfig()}>{busyAction === 'save-smtp' ? 'Guardando...' : 'Guardar produccion'}</button>
               <button className="icon-button secondary" disabled={!!busyAction} onClick={() => void testSmtp()}>{busyAction === 'test-smtp' ? 'Probando...' : 'Probar SMTP'}</button>

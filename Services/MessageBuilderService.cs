@@ -43,7 +43,7 @@ public class MessageBuilderService
     {
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
-        var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
+        var lugar = FirstNonEmpty(r.LugarAccidente, r.CiudadDetectada, "el lugar indicado en el reclamo");
         var talleres = talleresSugeridos.Take(5).ToList();
         var bloqueTalleres = HondurasLocationService.IsTegucigalpa(ciudad)
             ? @"
@@ -75,6 +75,11 @@ Para poder avanzar con la gestion debe completar la siguiente documentacion:
 Una vez se entregue completa la informacion, se evaluara la cobertura y la aplicacion de deducibles.
 
 Atentamente.".Trim();
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? "";
     }
 
 }

@@ -12,6 +12,7 @@ import {
   registrarRespuestaAseguradora,
   solicitarDocumentosReclamo,
   updateCorreosAseguradora,
+  updateDatosBasicosReclamo,
   updateReclamoDocumento,
   type ClaimPendingDocument,
 } from '../api/reclamosApi'
@@ -47,6 +48,8 @@ export function ReclamosView() {
   const [respuestaAseguradora, setRespuestaAseguradora] = useState('')
   const [aseguradoraAprobado, setAseguradoraAprobado] = useState(false)
   const [insurerFormDirty, setInsurerFormDirty] = useState(false)
+  const [datosBasicos, setDatosBasicos] = useState({ poliza: '', reclamo: '', placa: '', celular: '', ciudad: '' })
+  const [datosBasicosDirty, setDatosBasicosDirty] = useState(false)
 
   async function aceptarExcepcionDocumento(doc: ClaimPendingDocument) {
     if (!selected) return
@@ -105,6 +108,14 @@ export function ReclamosView() {
     setRespuestaAseguradora(selected.respuestaAseguradora || '')
     setAseguradoraAprobado(Boolean(selected.aseguradoraAprobado))
     setInsurerFormDirty(false)
+    setDatosBasicos({
+      poliza: selected.poliza || '',
+      reclamo: selected.reclamo || selected.numeroReclamo || '',
+      placa: selected.placa || '',
+      celular: selected.celular || '',
+      ciudad: selected.ciudadDetectada || '',
+    })
+    setDatosBasicosDirty(false)
     getReclamoChecklist(selected.id, selected.tipoReclamo)
       .then((res) => {
         setChecklist(res.requisitos)
@@ -138,7 +149,7 @@ export function ReclamosView() {
     if (actionBusy) return
     if (selected) await refreshSelected()
     else await load()
-  }, 10000, !actionBusy && !insurerFormDirty)
+  }, 10000, !actionBusy && !insurerFormDirty && !datosBasicosDirty)
 
   async function runAction(action: () => Promise<unknown>, success: string) {
     setActionBusy(true)
@@ -166,6 +177,14 @@ export function ReclamosView() {
       await updateCorreosAseguradora(selected.id, correoAseguradora, correoCopia)
       setInsurerFormDirty(false)
     }, 'Correos de aseguradora guardados.')
+  }
+
+  async function saveDatosBasicos() {
+    if (!selected) return
+    await runAction(async () => {
+      await updateDatosBasicosReclamo(selected.id, datosBasicos.poliza, datosBasicos.reclamo, datosBasicos.placa, datosBasicos.celular, datosBasicos.ciudad)
+      setDatosBasicosDirty(false)
+    }, 'Datos del reclamo guardados.')
   }
 
   async function saveInsurerResponse() {
@@ -226,6 +245,33 @@ export function ReclamosView() {
                 {selected.descripcion && (
                   <div className="inline-alert info" style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>{selected.descripcion}</div>
                 )}
+                <AccordionSection title="Datos del reclamo" subtitle="Completa identificadores pendientes de la carga.">
+                  <div className="insurer-box">
+                    <label className="field compact-field">
+                      <span>Poliza</span>
+                      <input value={datosBasicos.poliza} onChange={(event) => { setDatosBasicosDirty(true); setDatosBasicos({ ...datosBasicos, poliza: event.target.value }) }} placeholder="Numero de poliza" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Reclamo</span>
+                      <input value={datosBasicos.reclamo} onChange={(event) => { setDatosBasicosDirty(true); setDatosBasicos({ ...datosBasicos, reclamo: event.target.value }) }} placeholder="SAS-0000-2026" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Placa</span>
+                      <input value={datosBasicos.placa} onChange={(event) => { setDatosBasicosDirty(true); setDatosBasicos({ ...datosBasicos, placa: event.target.value }) }} placeholder="ABC-1234" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Celular</span>
+                      <input value={datosBasicos.celular} onChange={(event) => { setDatosBasicosDirty(true); setDatosBasicos({ ...datosBasicos, celular: event.target.value }) }} placeholder="9999-9999" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Ciudad</span>
+                      <input value={datosBasicos.ciudad} onChange={(event) => { setDatosBasicosDirty(true); setDatosBasicos({ ...datosBasicos, ciudad: event.target.value }) }} placeholder="SAN PEDRO SULA" />
+                    </label>
+                    <button className="icon-button secondary" disabled={actionBusy || !datosBasicosDirty} onClick={() => void saveDatosBasicos()}>
+                      Guardar datos
+                    </button>
+                  </div>
+                </AccordionSection>
                 <div className="action-row reclamo-actions">
                   <button className="icon-button secondary" disabled={actionBusy} onClick={() => void runAction(() => solicitarDocumentosReclamo(selected.id), 'Reclamo marcado con documentos pendientes.')}>
                     <FileText size={16} />Documentos pendientes

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, Mail, MessageSquare, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
+import { BarChart3, Bot, Building2, ClipboardList, CreditCard, FileClock, LayoutDashboard, Mail, MessageSquare, ReceiptText, Send, Settings, Upload, UserCog, Users, Wrench } from 'lucide-react'
 import './App.css'
 import { AuthProvider } from './components/AuthProvider'
 import { useAuth } from './hooks/useAuth'
@@ -10,6 +10,7 @@ import type { View } from './types/common'
 import { DashboardView } from './views/DashboardView'
 import { ClientsView } from './views/ClientesView'
 import { ReclamosView } from './views/ReclamosView'
+import { ReporteReclamosView } from './views/ReporteReclamosView'
 import { RemindersView } from './views/RecordatoriosView'
 import { PaymentsView } from './views/PagosView'
 import { ExtractorView } from './views/ExtractorView'
@@ -43,6 +44,7 @@ const navItems = [
   { id: 'carga',           label: 'Carga masiva',       icon: Upload,          section: 'Cartera' },
   // Operaciones
   { id: 'reclamos',          label: 'Reclamos',           icon: ClipboardList,   section: 'Operaciones' },
+  { id: 'reporte-reclamos',  label: 'Reporte reclamos',   icon: BarChart3,       section: 'Operaciones' },
   { id: 'whatsapp-bandeja',  label: 'Bandeja WhatsApp',   icon: MessageSquare,   section: 'Operaciones' },
   { id: 'recordatorios',     label: 'Recordatorios',      icon: Send,            section: 'Operaciones' },
   { id: 'talleres',          label: 'Talleres',           icon: Wrench,          section: 'Operaciones' },
@@ -124,6 +126,7 @@ function AppRouter() {
           {view === 'dashboard'      && <DashboardView />}
           {view === 'clientes'       && <ClientsView />}
           {view === 'reclamos'       && <ReclamosView />}
+          {view === 'reporte-reclamos' && <ReporteReclamosView />}
           {view === 'recordatorios'  && <RemindersView />}
           {view === 'pagos'          && <PaymentsView />}
           {view === 'gastos'         && <GastosView />}

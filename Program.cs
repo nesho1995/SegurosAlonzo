@@ -161,6 +161,7 @@ builder.Services.AddScoped<PagoRepository>();
 builder.Services.AddScoped<TallerRepository>();
 builder.Services.AddScoped<DocumentoRepository>();
 builder.Services.AddScoped<AuditoriaRepository>();
+builder.Services.AddScoped<ReporteReclamosRepository>();
 builder.Services.AddScoped<NotificacionRepository>();
 builder.Services.AddScoped<AutomationRepository>();
 builder.Services.AddScoped<EmpresaConfiguracionRepository>();

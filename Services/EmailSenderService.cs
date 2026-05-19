@@ -38,6 +38,9 @@ public class EmailSenderService
         if (!smtp.Enabled)
             return (false, "El envio SMTP esta deshabilitado.");
 
+        if (!TryParseInternalCopyEmails(smtp.InternalCopyEmails, out var internalCopies, out var invalidInternalCopy))
+            return (false, $"Correo interno de copia no valido: {invalidInternalCopy}");
+
         var host = smtp.Host;
         var port = smtp.Port;
         var user = smtp.Username;
@@ -53,6 +56,15 @@ public class EmailSenderService
         message.To.Add(to);
         if (cc is not null)
             message.Cc.Add(cc);
+        foreach (var internalCopy in internalCopies)
+        {
+            if (!message.To.Mailboxes.Any(x => SameAddress(x, internalCopy))
+                && !message.Cc.Mailboxes.Any(x => SameAddress(x, internalCopy)))
+            {
+                message.Cc.Add(internalCopy);
+            }
+        }
+
         var referencia = reclamo.Reclamo ?? reclamo.NumeroReclamo ?? reclamo.Id.ToString();
         message.Subject = soloComprobantesFinales
             ? $"Comprobantes finales de reclamo {referencia} - RSA/deducible"
@@ -102,6 +114,32 @@ Quedamos atentos.
         var response = await client.SendAsync(message);
         await client.DisconnectAsync(true);
         return (true, response);
+    }
+
+    private static bool TryParseInternalCopyEmails(string? value, out List<MailboxAddress> addresses, out string invalid)
+    {
+        addresses = new List<MailboxAddress>();
+        invalid = "";
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        foreach (var item in value.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!MailboxAddress.TryParse(item, out var address))
+            {
+                invalid = item;
+                return false;
+            }
+
+            addresses.Add(address);
+        }
+
+        return true;
+    }
+
+    private static bool SameAddress(MailboxAddress left, MailboxAddress right)
+    {
+        return string.Equals(left.Address, right.Address, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ReclamoDocumentLabel(string? value)

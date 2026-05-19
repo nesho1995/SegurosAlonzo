@@ -80,6 +80,7 @@ public class ReclamosApiController : ControllerBase
                 item.RespuestaAseguradora,
                 item.FechaRespuestaAseguradora,
                 item.AseguradoraAprobado,
+                item.Descripcion,
                 DocumentosPendientes = faltantes
             });
         }
@@ -227,6 +228,24 @@ public class ReclamosApiController : ControllerBase
 
         await _reclamos.UpdateCorreosAseguradoraAsync(id, request.Principal, request.Copia);
         await _auditoria.RegistrarAsync("ACTUALIZAR_CORREOS_ASEGURADORA", "RECLAMO", id, "Correos de aseguradora actualizados.");
+        return NoContent();
+    }
+
+    [HttpPut("{id:int}/datos-basicos")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> UpdateDatosBasicos(int id, [FromBody] ReclamoDatosBasicosRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(request.Poliza)
+            && string.IsNullOrWhiteSpace(request.Reclamo)
+            && string.IsNullOrWhiteSpace(request.Placa))
+            return BadRequest(new { message = "Debe conservar al menos poliza, reclamo o placa para identificar el expediente." });
+
+        await _reclamos.UpdateDatosBasicosAsync(id, request.Poliza, request.Reclamo, request.Placa, request.Celular, request.Ciudad);
+        await _auditoria.RegistrarAsync("ACTUALIZAR_DATOS_BASICOS_RECLAMO", "RECLAMO", id, $"Datos actualizados. Poliza={request.Poliza}; Reclamo={request.Reclamo}; Placa={request.Placa}; Ciudad={request.Ciudad}.");
         return NoContent();
     }
 
@@ -403,6 +422,7 @@ public class ReclamosApiController : ControllerBase
         return combined.Contains("RSA", StringComparison.Ordinal)
             || combined.Contains("RESTITUCION", StringComparison.Ordinal)
             || combined.Contains("RESTITUIR", StringComparison.Ordinal)
+            || combined.Contains("DEDUCIBLE", StringComparison.Ordinal)
             || combined.Contains("COASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO ASEGURO", StringComparison.Ordinal)
             || combined.Contains("CO-SEGURO", StringComparison.Ordinal)
@@ -433,4 +453,5 @@ public sealed record ActualizarDocumentoReclamoRequest(bool Recibido);
 public sealed record DocumentoExcepcionRequest(string? Observacion);
 public sealed record EnviarAseguradoraRequest(string? CorreoAseguradora, string? CorreoCopia);
 public sealed record CorreosAseguradoraRequest(string? Principal, string? Copia);
+public sealed record ReclamoDatosBasicosRequest(string? Poliza, string? Reclamo, string? Placa, string? Celular, string? Ciudad);
 public sealed record RespuestaAseguradoraRequest(string? Respuesta, bool Aprobado);

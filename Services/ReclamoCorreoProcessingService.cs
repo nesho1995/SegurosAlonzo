@@ -204,8 +204,8 @@ public class ReclamoCorreoProcessingService
             acciones.Add("Se habilito seguimiento de comprobante de RSA.");
         if (analysis.RequiereDeducible)
             acciones.Add("Se habilito seguimiento de comprobante de deducible.");
-        if (analysis.AprobadoSinPagosFinales)
-            acciones.Add("Aprobado sin pagos finales pendientes; el cliente puede ingresar el vehiculo.");
+        if (analysis.AprobadoSinPagosFinales || (analysis.Aprobado && !analysis.RequiereRsa && !analysis.RequiereDeducible && !analysis.SolicitaMasDocumentos))
+            acciones.Add("Aprobado sin comprobantes finales pendientes; se informara al cliente que no se requiere RSA ni deducible.");
         if (analysis.SolicitaMasDocumentos)
             acciones.Add("La aseguradora solicito documento o informacion adicional.");
 
@@ -223,7 +223,7 @@ public class ReclamoCorreoProcessingService
             var envio = await _whatsApp.EnviarRecordatorioAsync(actualizado, pendientes);
             acciones.Add(envio.ok ? "Cliente notificado por WhatsApp." : $"No se pudo notificar al cliente: {envio.response}");
         }
-        else if (analysis.AprobadoSinPagosFinales)
+        else if (analysis.AprobadoSinPagosFinales || (analysis.Aprobado && !analysis.SolicitaMasDocumentos))
         {
             await _repo.MarcarTodosDocumentosAsync(reclamo.Id, recibido: true);
             await _repo.UpdateEstadoAsync(reclamo.Id, "COMPLETO");

@@ -45,6 +45,7 @@ export type ReclamoHistoricoImportRow = {
   reclamo: string
   vehiculo: string
   placa: string
+  ciudad: string
   celular: string
   observaciones: string
   fechaNotificacion?: string

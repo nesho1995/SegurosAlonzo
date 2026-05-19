@@ -466,6 +466,33 @@ public class ReclamoRepository
         });
     }
 
+    public async Task UpdateDatosBasicosAsync(int id, string? poliza, string? reclamo, string? placa, string? celular, string? ciudad)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET poliza = @poliza,
+                reclamo = @reclamo,
+                numero_reclamo = @reclamo,
+                placa = @placa,
+                celular = @celular,
+                ciudad_detectada = @ciudad,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            poliza = string.IsNullOrWhiteSpace(poliza) ? null : poliza.Trim().ToUpperInvariant().Replace(" ", ""),
+            reclamo = string.IsNullOrWhiteSpace(reclamo) ? null : reclamo.Trim().ToUpperInvariant(),
+            placa = string.IsNullOrWhiteSpace(placa) ? null : placa.Trim().ToUpperInvariant(),
+            celular = string.IsNullOrWhiteSpace(celular) ? null : celular.Trim(),
+            ciudad = string.IsNullOrWhiteSpace(ciudad) ? null : ciudad.Trim().ToUpperInvariant()
+        });
+    }
+
     public async Task RegistrarRespuestaAseguradoraAsync(int id, string? respuesta, bool aprobado)
     {
         await EnsureSchemaAsync();

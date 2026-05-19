@@ -52,6 +52,7 @@ export type SmtpConfig = {
   passwordMasked?: string
   fromAddress: string
   fromName: string
+  internalCopyEmails: string
 }
 
 export function getEmpresaConfiguracion() {

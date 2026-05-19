@@ -85,24 +85,32 @@ public class ReclamoHistoricoImportService
                 Conductor = row.Conductor,
                 Celular = NormalizePhone(row.Celular),
                 FechaNotificacion = row.FechaNotificacion,
-                LugarAccidente = "",
+                LugarAccidente = string.IsNullOrWhiteSpace(row.Ciudad) ? "" : row.Ciudad,
                 Descripcion = BuildDescription(row),
                 TipoReclamo = "AUTOS",
                 Estado = "EN_SEGUIMIENTO",
                 EstadoReclamo = "EN_SEGUIMIENTO",
+                CiudadDetectada = string.IsNullOrWhiteSpace(row.Ciudad) ? null : row.Ciudad,
                 ActualizadoEn = DateTime.UtcNow
             };
 
             var id = await _reclamos.InsertAsync(reclamo);
-            await AplicarDocumentosAsync(id, row.DocumentosRecibidos);
+            await AplicarDocumentosAsync(id, row);
             result.Importados++;
         }
 
         return result;
     }
 
-    private async Task AplicarDocumentosAsync(int reclamoId, Dictionary<string, bool> documentosRecibidos)
+    private async Task AplicarDocumentosAsync(int reclamoId, ReclamoHistoricoImportRow row)
     {
+        var documentosRecibidos = row.DocumentosRecibidos;
+        foreach (var final in DetectarComprobantesFinales(row))
+        {
+            await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(reclamoId, final.Documento);
+            documentosRecibidos[final.Documento] = final.Recibido;
+        }
+
         var documentos = (await _reclamos.GetDocumentosAsync(reclamoId)).ToList();
         foreach (var item in documentos)
         {
@@ -127,6 +135,7 @@ public class ReclamoHistoricoImportService
             Poliza = NormalizePolicy(Get(row, headers, "POLIZA")),
             Reclamo = Get(row, headers, "RECLAMO").ToUpperInvariant(),
             Vehiculo = Get(row, headers, "VEHICULO"),
+            Ciudad = Get(row, headers, "CIUDAD"),
             Celular = Get(row, headers, "CELULAR"),
             Observaciones = Get(row, headers, "OBSERVACIONES"),
             FechaNotificacion = ParseDate(Get(row, headers, "FECHANOTIFICACION"))
@@ -136,7 +145,12 @@ public class ReclamoHistoricoImportService
         if (string.IsNullOrWhiteSpace(item.Conductor))
             item.Errors.Add(new ImportIssue("CONDUCTOR", "El conductor es requerido."));
         if (string.IsNullOrWhiteSpace(item.Poliza))
-            item.Errors.Add(new ImportIssue("POLIZA", "La poliza es requerida."));
+        {
+            if (!string.IsNullOrWhiteSpace(item.Reclamo) && !string.IsNullOrWhiteSpace(item.Placa))
+                item.Warnings.Add(new ImportIssue("POLIZA", "Sin poliza; se importara para seguimiento y debe completarse despues."));
+            else
+                item.Errors.Add(new ImportIssue("POLIZA", "La poliza es requerida cuando no hay suficiente referencia de reclamo/placa."));
+        }
         if (string.IsNullOrWhiteSpace(item.Reclamo))
             item.Warnings.Add(new ImportIssue("RECLAMO", "Sin numero de reclamo; se importara para seguimiento por poliza/conductor."));
 
@@ -144,6 +158,12 @@ public class ReclamoHistoricoImportService
         {
             var raw = Get(row, headers, doc.Key);
             item.DocumentosRecibidos[doc.Value] = IsReceived(raw);
+        }
+
+        foreach (var final in DetectarComprobantesFinales(item))
+        {
+            var estado = final.Recibido ? "recibido" : "pendiente";
+            item.Warnings.Add(new ImportIssue("OBSERVACIONES", $"{final.Documento} detectado como {estado}."));
         }
 
         if (!string.IsNullOrWhiteSpace(item.Reclamo))
@@ -190,6 +210,47 @@ public class ReclamoHistoricoImportService
         return text is not ("NO" or "N" or "PENDIENTE" or "FALTA" or "FALTANTE" or "0");
     }
 
+    private static List<(string Documento, bool Recibido)> DetectarComprobantesFinales(ReclamoHistoricoImportRow row)
+    {
+        var result = new List<(string Documento, bool Recibido)>();
+        var obs = NormalizeKey(row.Observaciones);
+        var mentionsDeducible = ContainsAny(obs, "DEDUCIBLE", "COASEGURO", "COPAGO");
+        var mentionsRsa = ContainsAny(obs, "RSA", "RESTITUCION");
+        var paid = ContainsAny(obs, "YAPAGO", "PAGADO", "CANCELADO", "REALIZOELPAGO", "HIZOELPAGO", "PAGODEDEDUCIBLEYRSA", "PAGOELDEDUCIBLE", "PAGOLARSA");
+        var pending = ContainsAny(obs, "COBRO", "COBRANDO", "PENDIENTE", "SALDO", "FALTA", "HACEFALTA");
+
+        if (row.DocumentosRecibidos.TryGetValue("Comprobante de deducible", out var deducibleRecibido) && deducibleRecibido)
+            AddIfNeeded("Comprobante de deducible", !(mentionsDeducible && pending));
+        if (row.DocumentosRecibidos.TryGetValue("Comprobante de RSA", out var rsaRecibido) && rsaRecibido)
+            AddIfNeeded("Comprobante de RSA", !(mentionsRsa && pending));
+
+        if (string.IsNullOrWhiteSpace(obs))
+            return result;
+
+        var recibido = paid && !pending;
+
+        if (mentionsDeducible)
+            AddIfNeeded("Comprobante de deducible", recibido);
+        if (mentionsRsa)
+            AddIfNeeded("Comprobante de RSA", recibido);
+
+        return result;
+
+        void AddIfNeeded(string documento, bool recibido)
+        {
+            var index = result.FindIndex(x => string.Equals(x.Documento, documento, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                result.Add((documento, recibido));
+            else
+                result[index] = (documento, result[index].Recibido || recibido);
+        }
+    }
+
+    private static bool ContainsAny(string text, params string[] values)
+    {
+        return values.Any(text.Contains);
+    }
+
     private static string NormalizePolicy(string value)
     {
         var text = (value ?? "").Trim();
@@ -231,6 +292,8 @@ public class ReclamoHistoricoImportService
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(row.Vehiculo))
             parts.Add($"Vehiculo: {row.Vehiculo}");
+        if (!string.IsNullOrWhiteSpace(row.Ciudad))
+            parts.Add($"Ciudad: {row.Ciudad}");
         if (!string.IsNullOrWhiteSpace(row.Observaciones))
             parts.Add($"Observaciones: {row.Observaciones}");
         return string.Join(Environment.NewLine, parts);

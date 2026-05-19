@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using MailKit.Net.Smtp;
 using MailKit.Security;
+using MimeKit;
 using MySqlConnector;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
@@ -217,7 +218,8 @@ public class ConfiguracionEmpresaApiController : ControllerBase
             Username = config.Username,
             PasswordMasked = string.IsNullOrWhiteSpace(config.Password) ? "" : "********",
             FromAddress = config.FromAddress,
-            FromName = config.FromName
+            FromName = config.FromName,
+            InternalCopyEmails = config.InternalCopyEmails
         });
     }
 
@@ -227,6 +229,9 @@ public class ConfiguracionEmpresaApiController : ControllerBase
     {
         if (config.Enabled && (string.IsNullOrWhiteSpace(config.Host) || string.IsNullOrWhiteSpace(config.Username)))
             return BadRequest(new { error = "Completa host y correo de produccion antes de activar SMTP." });
+        var invalidCopy = SplitEmailList(config.InternalCopyEmails).FirstOrDefault(x => !MailboxAddress.TryParse(x, out _));
+        if (!string.IsNullOrWhiteSpace(invalidCopy))
+            return BadRequest(new { error = $"Correo interno de copia no valido: {invalidCopy}" });
 
         await _settings.SaveSmtpConfigAsync(config, _configuration);
         await _auditoria.RegistrarAsync("CAMBIAR_CONFIGURACION_SMTP", "CONFIGURACION", 1, $"SMTP produccion {(config.Enabled ? "activado" : "desactivado")}.");
@@ -261,5 +266,12 @@ public class ConfiguracionEmpresaApiController : ControllerBase
     private int? CurrentUserId()
     {
         return int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    }
+
+    private static IEnumerable<string> SplitEmailList(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 }

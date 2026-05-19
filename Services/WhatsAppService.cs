@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
 using ReclamosWhatsApp.Services.DataQuality;
@@ -11,6 +12,8 @@ public class WhatsAppService
     private const int SingleTemplateParameterMaxLength = 900;
     private const int InitialDocumentParameterCount = 7;
     private const int ReminderDocumentParameterCount = 6;
+    private const string LocalTimeZoneId = "Central America Standard Time";
+    private const string CustomerServicePhone = "89659690";
 
     private readonly IConfiguration _config;
     private readonly HttpClient _http;
@@ -67,6 +70,7 @@ public class WhatsAppService
         string mensaje,
         int? usuarioId = null)
     {
+        mensaje = ApplyCustomerServiceClosing(mensaje);
         var config = await _settings.GetWhatsAppConfigAsync(_config, includeSecret: true);
 
         if (!string.IsNullOrWhiteSpace(config.TemplateName))
@@ -75,7 +79,7 @@ public class WhatsAppService
                 config.TemplateName,
                 config.LanguageCode,
                 config,
-                mensaje,
+                PrepareMessageForGenericTemplate(mensaje),
                 usuarioId);
 
         return await SendTextAsync(numeroDestino, mensaje, config, usuarioId);
@@ -138,6 +142,7 @@ public class WhatsAppService
         string mensajeTexto,
         int? usuarioId = null)
     {
+        mensajeTexto = ApplyCustomerServiceClosing(mensajeTexto);
         var chunks = SplitTemplateParameter(mensajeTexto, SingleTemplateParameterMaxLength).ToList();
         if (chunks.Count <= 1)
         {
@@ -279,11 +284,11 @@ public class WhatsAppService
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
         var fecha = r.FechaNotificacion?.ToString("dd/MM/yyyy") ?? "";
-        var lugar = string.IsNullOrWhiteSpace(r.LugarAccidente) ? "el lugar indicado en el reclamo" : r.LugarAccidente;
+        var lugar = FirstNonEmpty(r.LugarAccidente, r.CiudadDetectada, "el lugar indicado en el reclamo");
         var documentos = BuildInitialDocumentLines();
         var talleres = await BuildTalleresTextAsync(r);
         var documentosTexto = string.Join(Environment.NewLine, documentos);
-        var mensaje = r.MensajeWhatsApp ?? $@"Buenas tardes, {nombre}.
+        var mensaje = r.MensajeWhatsApp ?? $@"{SaludoDelDia()}, {nombre}.
 
 Reciba un cordial saludo. Le comunicamos que su reclamo {referencia} fue notificado con fecha {fecha}, ocurrido en {lugar}.
 
@@ -358,7 +363,7 @@ Ya se marcaron todos los documentos como recibidos.".Trim();
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
         var documentos = pendientes.Select((doc, index) => $"{index + 1}. {doc}").ToList();
         var lista = string.Join(Environment.NewLine, documentos);
-        var mensaje = $@"Buenas tardes {nombre}.
+        var mensaje = $@"{SaludoDelDia()} {nombre}.
 
 Le recordamos que para continuar con la gestión de su reclamo {referencia}, aún tenemos pendiente recibir:
 
@@ -410,7 +415,7 @@ Atentamente.".Trim();
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
         var documentos = pendientes.Select((doc, index) => $"{index + 1}. {doc}").ToList();
         var lista = string.Join(Environment.NewLine, documentos);
-        var mensaje = $@"Buenas tardes {nombre}.
+        var mensaje = $@"{SaludoDelDia()} {nombre}.
 
 Le informamos que su reclamo {referencia} fue aprobado por la aseguradora.
 
@@ -441,15 +446,11 @@ Atentamente.".Trim();
     {
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
-        var mensaje = $@"Buenas tardes {nombre}.
+        var mensaje = $@"{SaludoDelDia()} {nombre}.
 
-Le informamos que su reclamo {referencia} fue aprobado por la aseguradora.
+Su reclamo {referencia} fue aprobado exitosamente por la aseguradora. Por ahora no necesita enviar ningun documento adicional.
 
-En esta aprobacion no se solicito comprobante de RSA ni comprobante de deducible. Puede continuar con el ingreso o seguimiento indicado por la aseguradora.
-
-Nos mantenemos atentos para apoyarle con cualquier avance del tramite.
-
-Atentamente.".Trim();
+Seguimos atentos a cualquier avance del tramite.".Trim();
 
         return await SendConfiguredMessageAsync(r.Celular ?? "", mensaje);
     }
@@ -458,7 +459,7 @@ Atentamente.".Trim();
     {
         var nombre = string.IsNullOrWhiteSpace(r.Conductor) ? "cliente" : r.Conductor;
         var referencia = string.IsNullOrWhiteSpace(r.Reclamo) ? r.NumeroReclamo ?? $"#{r.Id}" : r.Reclamo;
-        var mensaje = $@"Buenas tardes {nombre}.
+        var mensaje = $@"{SaludoDelDia()} {nombre}.
 
 Le confirmamos que hemos recibido todos los documentos solicitados para su reclamo {referencia}.
 
@@ -569,6 +570,77 @@ Atentamente.".Trim();
     private static string TemplateBlankSafe(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? "No aplica" : value.Trim();
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? "";
+    }
+
+    private static string ApplyCustomerServiceClosing(string? message)
+    {
+        var text = message?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        var serviceLine = $"Para consultas o llamadas, comuniquese con servicio al cliente al {CustomerServicePhone}.";
+        const string closingPattern = @"\s*Atentamente\.?\s*$";
+
+        if (Regex.IsMatch(text, closingPattern, RegexOptions.IgnoreCase))
+            return Regex.Replace(text, closingPattern, $"{Environment.NewLine}{Environment.NewLine}{serviceLine}", RegexOptions.IgnoreCase).Trim();
+
+        if (text.Contains(CustomerServicePhone, StringComparison.OrdinalIgnoreCase))
+            return text;
+
+        return $@"{text}
+
+{serviceLine}".Trim();
+    }
+
+    private static string PrepareMessageForGenericTemplate(string? message)
+    {
+        var text = message?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(text))
+            return text;
+
+        // La plantilla generica de Meta ya trae su propio "Hola"; quitamos
+        // el saludo dinamico para evitar que se vea duplicado o forzado.
+        return Regex.Replace(
+            text,
+            @"^(Buenos dias|Buenas tardes|Buenas noches),?\s+[^\r\n.]+\.?\s*",
+            "",
+            RegexOptions.IgnoreCase).Trim();
+    }
+
+    private static string SaludoDelDia()
+    {
+        var now = GetLocalNow();
+        return now.Hour switch
+        {
+            >= 5 and < 12 => "Buenos dias",
+            >= 12 and < 18 => "Buenas tardes",
+            _ => "Buenas noches"
+        };
+    }
+
+    private static DateTime GetLocalNow()
+    {
+        foreach (var id in new[] { LocalTimeZoneId, "America/Tegucigalpa" })
+        {
+            try
+            {
+                var zone = TimeZoneInfo.FindSystemTimeZoneById(id);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return DateTime.Now;
     }
 
     private static bool UsesExpandedClaimTemplate(string? templateName)
