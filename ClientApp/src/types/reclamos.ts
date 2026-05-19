@@ -28,6 +28,10 @@ export type ClaimItem = {
   respuestaAseguradora?: string
   fechaRespuestaAseguradora?: string
   aseguradoraAprobado?: boolean
+  estadoSeguimiento?: string
+  fechaUltimaRevision?: string
+  usuarioUltimaRevisionId?: number
+  pagosPendientes?: number
   fechaCreacion: string
 }
 
@@ -42,4 +46,21 @@ export type ClaimChecklistItem = {
   tipoDocumento: string
   requerido: boolean
   activo: boolean
+}
+
+export type ClaimInsuranceResponse = {
+  id: number
+  reclamoId: number
+  origen: string
+  remitente?: string
+  asunto?: string
+  respuesta: string
+  aprobado: boolean
+  requiereRsa: boolean
+  requiereDeducible: boolean
+  solicitaMasDocumentos: boolean
+  aprobadoSinPagosFinales: boolean
+  acciones?: string
+  usuarioId?: number
+  creadoEn: string
 }

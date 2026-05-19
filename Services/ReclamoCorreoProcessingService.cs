@@ -232,6 +232,16 @@ public class ReclamoCorreoProcessingService
             acciones.Add(envio.ok ? "Cliente notificado por WhatsApp: aprobado sin pagos finales." : $"No se pudo notificar al cliente: {envio.response}");
         }
 
+        await _repo.RegistrarRespuestaAseguradoraHistorialAsync(
+            reclamo.Id,
+            "CORREO",
+            null,
+            email.Subject,
+            BuildInsuranceResponseText(email),
+            analysis,
+            string.Join(" ", acciones),
+            null);
+
         estado.ReclamosValidos++;
         await RegistrarDetalleAsync(estado, email, "ASOCIADO", string.Join(" ", acciones), reclamo.Id);
         return true;

@@ -8,9 +8,12 @@ import {
   getReclamoChecklist,
   getReclamoDocumentosPendientes,
   getReclamos,
+  getRespuestasAseguradora,
+  getSiguienteReclamoPendiente,
   marcarDocumentosCompletosReclamo,
   registrarRespuestaAseguradora,
   solicitarDocumentosReclamo,
+  updateSeguimientoReclamo,
   updateCorreosAseguradora,
   updateDatosBasicosReclamo,
   updateReclamoDocumento,
@@ -26,7 +29,7 @@ import { PageHeader } from '../components/Topbar'
 import { AccordionSection } from '../components/AccordionSection'
 import { notify } from '../components/ToastHost'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
-import type { ClaimChecklistItem, ClaimItem, ClaimsResponse } from '../types/reclamos'
+import type { ClaimChecklistItem, ClaimInsuranceResponse, ClaimItem, ClaimsResponse } from '../types/reclamos'
 import { compactMeta, dateFmt } from '../utils/formatters'
 import { stateTone, statusLabel } from '../utils/labels'
 import { reclamoDocumentLabel } from '../utils/reclamos'
@@ -47,6 +50,7 @@ export function ReclamosView() {
   const [correoCopia, setCorreoCopia] = useState('')
   const [respuestaAseguradora, setRespuestaAseguradora] = useState('')
   const [aseguradoraAprobado, setAseguradoraAprobado] = useState(false)
+  const [respuestasHistorial, setRespuestasHistorial] = useState<ClaimInsuranceResponse[]>([])
   const [insurerFormDirty, setInsurerFormDirty] = useState(false)
   const [datosBasicos, setDatosBasicos] = useState({ poliza: '', reclamo: '', placa: '', celular: '', ciudad: '' })
   const [datosBasicosDirty, setDatosBasicosDirty] = useState(false)
@@ -105,8 +109,8 @@ export function ReclamosView() {
     if (!selected) return
     setCorreoAseguradora(selected.correoAseguradoraPrincipal || '')
     setCorreoCopia(selected.correoAseguradoraCopia || '')
-    setRespuestaAseguradora(selected.respuestaAseguradora || '')
-    setAseguradoraAprobado(Boolean(selected.aseguradoraAprobado))
+    setRespuestaAseguradora('')
+    setAseguradoraAprobado(false)
     setInsurerFormDirty(false)
     setDatosBasicos({
       poliza: selected.poliza || '',
@@ -131,6 +135,9 @@ export function ReclamosView() {
         setChecklistPendientes(res.pendientes)
       })
       .catch(() => setDocumentosPendientes([]))
+    getRespuestasAseguradora(selected.id)
+      .then((res) => setRespuestasHistorial(res.items))
+      .catch(() => setRespuestasHistorial([]))
   }, [selected])
 
   async function refreshSelected() {
@@ -143,6 +150,8 @@ export function ReclamosView() {
     const response = await getReclamos(query)
     setData(response)
     setSelected(response.items.find((item) => item.id === selected.id) ?? selected)
+    const historial = await getRespuestasAseguradora(selected.id)
+    setRespuestasHistorial(historial.items)
   }
 
   useAutoRefresh(async () => {
@@ -189,10 +198,34 @@ export function ReclamosView() {
 
   async function saveInsurerResponse() {
     if (!selected) return
+    if (!respuestaAseguradora.trim()) {
+      notify('Pega o escribe la respuesta antes de guardar.', 'error')
+      return
+    }
     await runAction(async () => {
       await registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado)
+      setRespuestaAseguradora('')
+      setAseguradoraAprobado(false)
       setInsurerFormDirty(false)
     }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron comprobantes de pago de RSA/deducible si aplican.' : 'Respuesta de aseguradora guardada.')
+  }
+
+  async function saveSeguimiento(value: string) {
+    if (!selected) return
+    await runAction(async () => {
+      await updateSeguimientoReclamo(selected.id, value)
+    }, 'Estado de seguimiento actualizado.')
+  }
+
+  async function goNextPending() {
+    const response = await getSiguienteReclamoPendiente(selected?.id)
+    if (response.item) {
+      setSelected(response.item)
+      setActionMessage('')
+      notify('Siguiente reclamo cargado.', 'success')
+    } else {
+      notify('No hay otro reclamo pendiente en la cola.', 'success')
+    }
   }
 
   function confirmCompleteAndSend() {
@@ -208,7 +241,7 @@ export function ReclamosView() {
   return (
     <div className="reclamos-page">
       <PageHeader eyebrow="Reclamos" title="Expedientes de reclamos" description="Consulta reclamos y adjunta documentos de respaldo sin tocar el flujo probado de WhatsApp." onRefresh={load} />
-      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'PENDIENTE', 'PENDIENTE_ENVIO', 'ENVIADO', 'ERROR', 'COMPLETO', 'EN_SEGUIMIENTO', 'DOCUMENTOS_PENDIENTES']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
+      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'NO_REVISADO', 'EN_REVISION', 'ESPERANDO_CLIENTE', 'ESPERANDO_ASEGURADORA', 'LISTO', 'PENDIENTES_PAGO', 'SIN_RESPUESTA_ASEGURADORA', 'CON_RESPUESTA_ASEGURADORA', 'SIN_TELEFONO', 'SIN_POLIZA', 'EN_SEGUIMIENTO', 'DOCUMENTOS_PENDIENTES', 'COMPLETO', 'ERROR']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
       {loading && <LoadingCard text="Cargando reclamos..." />}
       {error && <ErrorCard text={error} />}
       {data && (
@@ -217,17 +250,20 @@ export function ReclamosView() {
             <button className="icon-button secondary" type="button" onClick={() => setHideList((value) => !value)}>
               {hideList ? 'Mostrar reclamos' : 'Ocultar reclamos'}
             </button>
+            <button className="primary-button" type="button" disabled={actionBusy} onClick={() => void goNextPending()}>
+              Siguiente pendiente
+            </button>
           </div>
           {!hideList && <article className="panel">
             <PanelTitle title={`${data.total} reclamos`} subtitle="Selecciona un reclamo para gestionar documentos." />
             <DataTable
-              headers={['Reclamo', 'Cliente', 'Poliza', 'Fecha', 'Estado']}
+              headers={['Reclamo', 'Cliente', 'Poliza', 'Pendientes', 'Seguimiento']}
               rows={data.items.map((item) => [
                 <button className="link-button" onClick={() => { setActionMessage(''); setSelected(item) }}><FileText size={16} />{item.reclamo || `#${item.id}`}</button>,
                 <CellTitle title={item.conductor || item.asegurado || 'Sin cliente'} subtitle={item.celular || item.placa || 'Sin detalle'} />,
                 item.poliza || 'Sin poliza',
-                item.fechaCreacion ? dateFmt.format(new Date(item.fechaCreacion)) : 'Sin fecha',
-                <StatusPill text={statusLabel(item.estadoReclamo || item.estado)} tone={stateTone(item.estadoReclamo || item.estado)} />,
+                `${item.documentosPendientes ?? 0}${item.pagosPendientes ? ` / pagos ${item.pagosPendientes}` : ''}`,
+                <StatusPill text={statusLabel(item.estadoSeguimiento || 'NO_REVISADO')} tone={stateTone(item.estadoSeguimiento || 'NO_REVISADO')} />,
               ])}
             />
           </article>}
@@ -241,6 +277,8 @@ export function ReclamosView() {
                   <div className="info-item"><span>Taller</span><strong>{selected.tallerAsignadoId || selected.tallerSugeridoId ? `Asignado #${selected.tallerAsignadoId || selected.tallerSugeridoId}` : 'Sin taller'}</strong></div>
                   <div className="info-item"><span>Motivo sugerencia</span><strong>{selected.motivoSugerenciaTaller || 'Sin sugerencia'}</strong></div>
                   <div className="info-item"><span>WhatsApp</span><strong>{statusLabel(selected.estadoReclamo || selected.estado)}</strong></div>
+                  <div className="info-item"><span>Seguimiento</span><strong>{statusLabel(selected.estadoSeguimiento || 'NO_REVISADO')}</strong></div>
+                  <div className="info-item"><span>Ultima revision</span><strong>{selected.fechaUltimaRevision ? dateFmt.format(new Date(selected.fechaUltimaRevision)) : 'Sin revisar'}</strong></div>
                 </div>
                 {selected.descripcion && (
                   <div className="inline-alert info" style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>{selected.descripcion}</div>
@@ -273,6 +311,11 @@ export function ReclamosView() {
                   </div>
                 </AccordionSection>
                 <div className="action-row reclamo-actions">
+                  <select value={selected.estadoSeguimiento || 'NO_REVISADO'} disabled={actionBusy} onChange={(event) => void saveSeguimiento(event.target.value)}>
+                    {['NO_REVISADO', 'EN_REVISION', 'ESPERANDO_CLIENTE', 'ESPERANDO_ASEGURADORA', 'LISTO'].map((item) => (
+                      <option key={item} value={item}>{statusLabel(item)}</option>
+                    ))}
+                  </select>
                   <button className="icon-button secondary" disabled={actionBusy} onClick={() => void runAction(() => solicitarDocumentosReclamo(selected.id), 'Reclamo marcado con documentos pendientes.')}>
                     <FileText size={16} />Documentos pendientes
                   </button>
@@ -353,8 +396,8 @@ export function ReclamosView() {
                 <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir pagos de RSA/deducible o documentos adicionales.">
                   <div className="insurer-box">
                     <label className="wide-field">
-                      <span>Correo o respuesta recibida</span>
-                      <textarea value={respuestaAseguradora} rows={5} onChange={(event) => { setInsurerFormDirty(true); setRespuestaAseguradora(event.target.value) }} placeholder="Pega aqui la respuesta de la aseguradora." />
+                      <span>Nueva respuesta o nota</span>
+                      <textarea value={respuestaAseguradora} rows={5} onChange={(event) => { setInsurerFormDirty(true); setRespuestaAseguradora(event.target.value) }} placeholder="Pega aqui una respuesta nueva. No reemplaza las anteriores." />
                     </label>
                     <label className="check-field">
                       <input type="checkbox" checked={aseguradoraAprobado} onChange={(event) => { setInsurerFormDirty(true); setAseguradoraAprobado(event.target.checked) }} />
@@ -363,6 +406,26 @@ export function ReclamosView() {
                     <button className="icon-button" disabled={actionBusy} onClick={() => void saveInsurerResponse()}>
                       Guardar respuesta
                     </button>
+                  </div>
+                  <div className="mail-review-list compact" style={{ marginTop: 12 }}>
+                    {respuestasHistorial.length === 0 && <div className="empty">Sin respuestas registradas todavia.</div>}
+                    {respuestasHistorial.map((item) => (
+                      <details className="mail-review-card info" key={item.id}>
+                        <summary>
+                          <div className="mail-review-main">
+                            <StatusPill text={item.origen} tone={item.origen === 'CORREO' ? 'info' : 'slate'} />
+                            <div className="mail-review-copy">
+                              <strong>{item.asunto || (item.aprobado ? 'Respuesta aprobada' : 'Respuesta registrada')}</strong>
+                              <span>{new Date(item.creadoEn).toLocaleString('es-HN')} {item.remitente ? `- ${item.remitente}` : ''}</span>
+                            </div>
+                          </div>
+                        </summary>
+                        <div className="mail-review-detail">
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{item.respuesta}</div>
+                          {item.acciones && <div><strong>Acciones:</strong> {item.acciones}</div>}
+                        </div>
+                      </details>
+                    ))}
                   </div>
                 </AccordionSection>
               </>

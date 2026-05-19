@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using ReclamosWhatsApp.Data;
 using ReclamosWhatsApp.Models;
 using ReclamosWhatsApp.Security;
@@ -32,25 +33,52 @@ public class ReclamosApiController : ControllerBase
     {
         var items = await _reclamos.GetAllAsync();
 
-        if (!string.IsNullOrWhiteSpace(estado) && estado != "TODOS")
+        var specialEstado = (estado ?? "TODOS").Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(estado)
+            && specialEstado != "TODOS"
+            && specialEstado is not ("PENDIENTES_PAGO" or "SIN_RESPUESTA_ASEGURADORA" or "CON_RESPUESTA_ASEGURADORA" or "SIN_TELEFONO" or "SIN_POLIZA" or "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"))
+        {
             items = items.Where(x => (x.EstadoReclamo ?? x.Estado) == estado);
+        }
 
         if (!string.IsNullOrWhiteSpace(buscar))
         {
             var text = buscar.Trim();
+            var compact = NormalizeSearch(text);
             items = items.Where(x =>
                 (x.Conductor ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
                 || (x.Asegurado ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Celular ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.CiudadDetectada ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.LugarAccidente ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Descripcion ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
                 || (x.Poliza ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
                 || (x.Placa ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
-                || (x.Reclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase));
+                || (x.NumeroReclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || (x.Reclamo ?? "").Contains(text, StringComparison.OrdinalIgnoreCase)
+                || NormalizeSearch(x.Celular).Contains(compact)
+                || NormalizeSearch(x.Placa).Contains(compact)
+                || NormalizeSearch(x.Poliza).Contains(compact)
+                || NormalizeSearch(x.Reclamo).Contains(compact)
+                || NormalizeSearch(x.NumeroReclamo).Contains(compact));
         }
 
-        var result = items.Take(100).ToList();
-        var enriched = new List<object>(result.Count);
-        foreach (var item in result)
+        var enriched = new List<object>();
+        foreach (var item in items)
         {
-            var faltantes = await _reclamos.CountFaltantesByEntidadDocumentosAsync(item.Id, item.TipoReclamo ?? "GENERAL");
+            var documentos = (await _reclamos.GetDocumentosAsync(item.Id)).ToList();
+            var faltantes = documentos.Count(x => !x.Recibido);
+            var pagosPendientes = documentos.Count(x => !x.Recibido && IsComprobanteFinalName(x.Documento));
+            var estadoSeguimiento = string.IsNullOrWhiteSpace(item.EstadoSeguimiento) ? "NO_REVISADO" : item.EstadoSeguimiento;
+
+            if (specialEstado == "PENDIENTES_PAGO" && pagosPendientes == 0) continue;
+            if (specialEstado == "SIN_RESPUESTA_ASEGURADORA" && !string.IsNullOrWhiteSpace(item.RespuestaAseguradora)) continue;
+            if (specialEstado == "CON_RESPUESTA_ASEGURADORA" && string.IsNullOrWhiteSpace(item.RespuestaAseguradora)) continue;
+            if (specialEstado == "SIN_TELEFONO" && !string.IsNullOrWhiteSpace(item.Celular)) continue;
+            if (specialEstado == "SIN_POLIZA" && !string.IsNullOrWhiteSpace(item.Poliza)) continue;
+            if (specialEstado is "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"
+                && !string.Equals(estadoSeguimiento, specialEstado, StringComparison.OrdinalIgnoreCase)) continue;
+
             enriched.Add(new
             {
                 item.Id,
@@ -80,12 +108,16 @@ public class ReclamosApiController : ControllerBase
                 item.RespuestaAseguradora,
                 item.FechaRespuestaAseguradora,
                 item.AseguradoraAprobado,
+                EstadoSeguimiento = estadoSeguimiento,
+                item.FechaUltimaRevision,
+                item.UsuarioUltimaRevisionId,
                 item.Descripcion,
-                DocumentosPendientes = faltantes
+                DocumentosPendientes = faltantes,
+                PagosPendientes = pagosPendientes
             });
         }
 
-        return Ok(new { items = enriched, total = items.Count() });
+        return Ok(new { items = enriched.Take(100).ToList(), total = enriched.Count });
     }
 
     [HttpPost]
@@ -249,6 +281,37 @@ public class ReclamosApiController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("{id:int}/respuestas-aseguradora")]
+    public async Task<IActionResult> GetRespuestasAseguradora(int id)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        var items = await _reclamos.GetRespuestasAseguradoraAsync(id);
+        return Ok(new { items });
+    }
+
+    [HttpPut("{id:int}/seguimiento")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> UpdateSeguimiento(int id, [FromBody] ReclamoSeguimientoRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.UpdateEstadoSeguimientoAsync(id, request.EstadoSeguimiento, CurrentUserId());
+        await _auditoria.RegistrarAsync("ACTUALIZAR_SEGUIMIENTO_RECLAMO", "RECLAMO", id, $"Seguimiento={request.EstadoSeguimiento}.");
+        return NoContent();
+    }
+
+    [HttpGet("siguiente-pendiente")]
+    public async Task<IActionResult> GetSiguientePendiente([FromQuery] int? actualId = null)
+    {
+        var item = await _reclamos.GetSiguientePendienteAsync(actualId);
+        return Ok(new { item });
+    }
+
     [HttpPost("{id:int}/documentos/{documentoId:int}/excepcion")]
     [Authorize(Policy = Permissions.DocumentosSubir)]
     public async Task<IActionResult> AceptarDocumentoConExcepcion(int id, int documentoId, [FromBody] DocumentoExcepcionRequest request)
@@ -365,6 +428,15 @@ public class ReclamosApiController : ControllerBase
         var analysis = InsuranceResponseAnalyzer.Analyze(request.Respuesta);
         var aprobado = request.Aprobado || analysis.Aprobado;
         await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, aprobado);
+        await _reclamos.RegistrarRespuestaAseguradoraHistorialAsync(
+            id,
+            "MANUAL",
+            null,
+            null,
+            request.Respuesta,
+            analysis with { Aprobado = aprobado },
+            null,
+            CurrentUserId());
         if (aprobado)
         {
             if (analysis.RequiereRsa)
@@ -433,6 +505,28 @@ public class ReclamosApiController : ControllerBase
             || combined.Contains("PARTICIPACION DEL ASEGURADO", StringComparison.Ordinal);
     }
 
+    private static bool IsComprobanteFinalName(string? documento)
+    {
+        var text = InsuranceResponseAnalyzer.NormalizeForMatch(documento);
+        return text.Contains("RSA", StringComparison.Ordinal)
+            || text.Contains("DEDUCIBLE", StringComparison.Ordinal)
+            || text.Contains("COASEGURO", StringComparison.Ordinal)
+            || text.Contains("COPAGO", StringComparison.Ordinal);
+    }
+
+    private int? CurrentUserId()
+    {
+        return int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    }
+
+    private static string NormalizeSearch(string? value)
+    {
+        return new string((value ?? "")
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToUpperInvariant)
+            .ToArray());
+    }
+
     private static string NormalizeDocumentText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -455,3 +549,4 @@ public sealed record EnviarAseguradoraRequest(string? CorreoAseguradora, string?
 public sealed record CorreosAseguradoraRequest(string? Principal, string? Copia);
 public sealed record ReclamoDatosBasicosRequest(string? Poliza, string? Reclamo, string? Placa, string? Celular, string? Ciudad);
 public sealed record RespuestaAseguradoraRequest(string? Respuesta, bool Aprobado);
+public sealed record ReclamoSeguimientoRequest(string EstadoSeguimiento);

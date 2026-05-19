@@ -1,5 +1,6 @@
 using Dapper;
 using ReclamosWhatsApp.Models;
+using ReclamosWhatsApp.Services;
 
 namespace ReclamosWhatsApp.Data;
 
@@ -31,6 +32,8 @@ public class ReclamoRepository
                 correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
                 respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
                 aseguradora_aprobado AseguradoraAprobado,
+                estado_seguimiento EstadoSeguimiento, fecha_ultima_revision FechaUltimaRevision,
+                usuario_ultima_revision_id UsuarioUltimaRevisionId,
                 actualizado_en ActualizadoEn,
                 estado Estado, fecha_creacion FechaCreacion, fecha_envio FechaEnvio,
                 error Error
@@ -59,6 +62,8 @@ public class ReclamoRepository
                 correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
                 respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
                 aseguradora_aprobado AseguradoraAprobado,
+                estado_seguimiento EstadoSeguimiento, fecha_ultima_revision FechaUltimaRevision,
+                usuario_ultima_revision_id UsuarioUltimaRevisionId,
                 actualizado_en ActualizadoEn,
                 estado Estado, fecha_creacion FechaCreacion, fecha_envio FechaEnvio,
                 error Error
@@ -516,6 +521,53 @@ public class ReclamoRepository
         });
     }
 
+    public async Task<int> RegistrarRespuestaAseguradoraHistorialAsync(
+        int reclamoId,
+        string origen,
+        string? remitente,
+        string? asunto,
+        string? respuesta,
+        InsuranceResponseAnalysis analysis,
+        string? acciones,
+        int? usuarioId)
+    {
+        await EnsureSchemaAsync();
+        if (string.IsNullOrWhiteSpace(respuesta))
+            return 0;
+
+        using var cn = _factory.CreateConnection();
+        const string sql = @"
+            INSERT INTO reclamo_respuestas_aseguradora
+            (
+                reclamo_id, origen, remitente, asunto, respuesta, aprobado,
+                requiere_rsa, requiere_deducible, solicita_mas_documentos,
+                aprobado_sin_pagos_finales, acciones, usuario_id
+            )
+            VALUES
+            (
+                @reclamoId, @origen, @remitente, @asunto, @respuesta, @aprobado,
+                @requiereRsa, @requiereDeducible, @solicitaMasDocumentos,
+                @aprobadoSinPagosFinales, @acciones, @usuarioId
+            );
+            SELECT LAST_INSERT_ID();";
+
+        return await cn.ExecuteScalarAsync<int>(sql, new
+        {
+            reclamoId,
+            origen = string.IsNullOrWhiteSpace(origen) ? "MANUAL" : origen.Trim().ToUpperInvariant(),
+            remitente = string.IsNullOrWhiteSpace(remitente) ? null : remitente.Trim(),
+            asunto = string.IsNullOrWhiteSpace(asunto) ? null : asunto.Trim(),
+            respuesta = respuesta.Trim(),
+            aprobado = analysis.Aprobado,
+            requiereRsa = analysis.RequiereRsa,
+            requiereDeducible = analysis.RequiereDeducible,
+            solicitaMasDocumentos = analysis.SolicitaMasDocumentos,
+            aprobadoSinPagosFinales = analysis.AprobadoSinPagosFinales,
+            acciones,
+            usuarioId
+        });
+    }
+
     public async Task RegistrarRespuestaAseguradoraCorreoAsync(int id, string? respuesta, bool aprobado)
     {
         await EnsureSchemaAsync();
@@ -541,6 +593,104 @@ public class ReclamoRepository
             respuesta = string.IsNullOrWhiteSpace(respuesta) ? null : respuesta.Trim(),
             aprobado
         });
+    }
+
+    public async Task<IEnumerable<ReclamoRespuestaAseguradora>> GetRespuestasAseguradoraAsync(int reclamoId)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT
+                id Id,
+                reclamo_id ReclamoId,
+                origen Origen,
+                remitente Remitente,
+                asunto Asunto,
+                respuesta Respuesta,
+                aprobado Aprobado,
+                requiere_rsa RequiereRsa,
+                requiere_deducible RequiereDeducible,
+                solicita_mas_documentos SolicitaMasDocumentos,
+                aprobado_sin_pagos_finales AprobadoSinPagosFinales,
+                acciones Acciones,
+                usuario_id UsuarioId,
+                creado_en CreadoEn
+            FROM reclamo_respuestas_aseguradora
+            WHERE reclamo_id = @reclamoId
+            ORDER BY creado_en DESC, id DESC;";
+
+        return await cn.QueryAsync<ReclamoRespuestaAseguradora>(sql, new { reclamoId });
+    }
+
+    public async Task UpdateEstadoSeguimientoAsync(int id, string estadoSeguimiento, int? usuarioId)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        var estado = NormalizeEstadoSeguimiento(estadoSeguimiento);
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET estado_seguimiento = @estado,
+                fecha_ultima_revision = NOW(),
+                usuario_ultima_revision_id = @usuarioId,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new { id, estado, usuarioId });
+    }
+
+    public async Task<ReclamoWhatsApp?> GetSiguientePendienteAsync(int? currentId = null)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            SELECT
+                r.id Id, r.message_id MessageId, r.asunto Asunto, r.aseguradora Aseguradora, r.asegurado Asegurado,
+                r.poliza Poliza, r.placa Placa, r.reclamo Reclamo, r.conductor Conductor,
+                r.celular Celular, r.fecha_notificacion FechaNotificacion,
+                r.lugar_accidente LugarAccidente, r.mensaje_whatsapp MensajeWhatsApp,
+                r.cliente_id ClienteId, r.poliza_id PolizaId, r.numero_reclamo NumeroReclamo,
+                r.fecha_reclamo FechaReclamo, r.tipo_reclamo TipoReclamo, r.estado_reclamo EstadoReclamo,
+                r.taller_sugerido_id TallerSugeridoId, r.taller_asignado_id TallerAsignadoId,
+                r.ciudad_detectada CiudadDetectada, r.motivo_sugerencia_taller MotivoSugerenciaTaller,
+                r.descripcion Descripcion, r.monto_estimado MontoEstimado, r.monto_aprobado MontoAprobado, r.monto_pagado MontoPagado,
+                r.correo_aseguradora_principal CorreoAseguradoraPrincipal, r.correo_aseguradora_copia CorreoAseguradoraCopia,
+                r.respuesta_aseguradora RespuestaAseguradora, r.fecha_respuesta_aseguradora FechaRespuestaAseguradora,
+                r.aseguradora_aprobado AseguradoraAprobado,
+                r.estado_seguimiento EstadoSeguimiento, r.fecha_ultima_revision FechaUltimaRevision,
+                r.usuario_ultima_revision_id UsuarioUltimaRevisionId,
+                r.actualizado_en ActualizadoEn,
+                r.estado Estado, r.fecha_creacion FechaCreacion, r.fecha_envio FechaEnvio,
+                r.error Error
+            FROM reclamos_whatsapp r
+            LEFT JOIN (
+                SELECT reclamo_id, COUNT(1) pendientes
+                FROM reclamo_documentos
+                WHERE recibido = 0
+                GROUP BY reclamo_id
+            ) docs ON docs.reclamo_id = r.id
+            WHERE COALESCE(r.estado_seguimiento, 'NO_REVISADO') <> 'LISTO'
+              AND (r.estado NOT IN ('COMPLETO','CERRADO') OR COALESCE(docs.pendientes, 0) > 0)
+              AND (@currentId IS NULL OR r.id > @currentId)
+            ORDER BY
+                CASE COALESCE(r.estado_seguimiento, 'NO_REVISADO')
+                    WHEN 'NO_REVISADO' THEN 0
+                    WHEN 'EN_REVISION' THEN 1
+                    WHEN 'ESPERANDO_CLIENTE' THEN 2
+                    WHEN 'ESPERANDO_ASEGURADORA' THEN 3
+                    ELSE 4
+                END,
+                CASE WHEN COALESCE(docs.pendientes, 0) > 0 THEN 0 ELSE 1 END,
+                r.id ASC
+            LIMIT 1;";
+
+        var next = await cn.QueryFirstOrDefaultAsync<ReclamoWhatsApp>(sql, new { currentId });
+        if (next is not null || currentId is null)
+            return next;
+
+        return await cn.QueryFirstOrDefaultAsync<ReclamoWhatsApp>(sql, new { currentId = (int?)null });
     }
 
     public async Task<bool> TodosDocumentosRecibidosAsync(int reclamoId)
@@ -766,6 +916,9 @@ public class ReclamoRepository
                 ADD COLUMN IF NOT EXISTS respuesta_aseguradora TEXT NULL,
                 ADD COLUMN IF NOT EXISTS fecha_respuesta_aseguradora DATETIME NULL,
                 ADD COLUMN IF NOT EXISTS aseguradora_aprobado TINYINT(1) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS estado_seguimiento VARCHAR(40) NOT NULL DEFAULT 'NO_REVISADO',
+                ADD COLUMN IF NOT EXISTS fecha_ultima_revision DATETIME NULL,
+                ADD COLUMN IF NOT EXISTS usuario_ultima_revision_id INT NULL,
                 ADD COLUMN IF NOT EXISTS actualizado_en DATETIME NULL;
             DELETE FROM reclamo_documentos
             WHERE LOWER(documento) IN ('pago de primas al dia', 'pago de primas al día', 'pago de primas al dÃ­a');
@@ -801,6 +954,25 @@ public class ReclamoRepository
             ON DUPLICATE KEY UPDATE requerido = VALUES(requerido), activo = VALUES(activo);");
 
         await cn.ExecuteAsync(@"
+            CREATE TABLE IF NOT EXISTS reclamo_respuestas_aseguradora (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reclamo_id INT NOT NULL,
+                origen VARCHAR(40) NOT NULL DEFAULT 'MANUAL',
+                remitente VARCHAR(180) NULL,
+                asunto VARCHAR(255) NULL,
+                respuesta TEXT NOT NULL,
+                aprobado TINYINT(1) NOT NULL DEFAULT 0,
+                requiere_rsa TINYINT(1) NOT NULL DEFAULT 0,
+                requiere_deducible TINYINT(1) NOT NULL DEFAULT 0,
+                solicita_mas_documentos TINYINT(1) NOT NULL DEFAULT 0,
+                aprobado_sin_pagos_finales TINYINT(1) NOT NULL DEFAULT 0,
+                acciones TEXT NULL,
+                usuario_id INT NULL,
+                creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX ix_reclamo_respuestas_reclamo_fecha (reclamo_id, creado_en)
+            );");
+
+        await cn.ExecuteAsync(@"
             ALTER TABLE reclamo_documentos
                 ADD COLUMN IF NOT EXISTS cantidad_requerida INT NOT NULL DEFAULT 1,
                 ADD COLUMN IF NOT EXISTS minimo_aceptable INT NOT NULL DEFAULT 1,
@@ -820,5 +992,13 @@ public class ReclamoRepository
     {
         return !string.IsNullOrWhiteSpace(documento)
             && documento.Contains("cotizacion", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeEstadoSeguimiento(string? value)
+    {
+        var normalized = (value ?? "").Trim().ToUpperInvariant();
+        return normalized is "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"
+            ? normalized
+            : "EN_REVISION";
     }
 }

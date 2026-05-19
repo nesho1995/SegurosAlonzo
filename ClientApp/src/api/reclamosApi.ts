@@ -1,5 +1,5 @@
 import { getJson, postJson, requestJson } from './http'
-import type { ClaimChecklistItem, ClaimsResponse } from '../types/reclamos'
+import type { ClaimChecklistItem, ClaimInsuranceResponse, ClaimItem, ClaimsResponse } from '../types/reclamos'
 
 export function getReclamos(params: URLSearchParams) {
   return getJson<ClaimsResponse>(`/api/reclamos?${params}`)
@@ -55,6 +55,19 @@ export function updateDatosBasicosReclamo(id: number, poliza?: string, reclamo?:
 
 export function registrarRespuestaAseguradora(id: number, respuesta: string, aprobado: boolean) {
   return postJson(`/api/reclamos/${id}/respuesta-aseguradora`, { respuesta, aprobado })
+}
+
+export function getRespuestasAseguradora(id: number) {
+  return getJson<{ items: ClaimInsuranceResponse[] }>(`/api/reclamos/${id}/respuestas-aseguradora`)
+}
+
+export function updateSeguimientoReclamo(id: number, estadoSeguimiento: string) {
+  return requestJson(`/api/reclamos/${id}/seguimiento`, 'PUT', { estadoSeguimiento })
+}
+
+export function getSiguienteReclamoPendiente(actualId?: number) {
+  const query = actualId ? `?actualId=${actualId}` : ''
+  return getJson<{ item?: ClaimItem }>(`/api/reclamos/siguiente-pendiente${query}`)
 }
 
 export type ClaimPendingDocument = {

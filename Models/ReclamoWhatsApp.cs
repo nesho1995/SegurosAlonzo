@@ -35,6 +35,9 @@ public class ReclamoWhatsApp
     public string? RespuestaAseguradora { get; set; }
     public DateTime? FechaRespuestaAseguradora { get; set; }
     public bool AseguradoraAprobado { get; set; }
+    public string EstadoSeguimiento { get; set; } = "NO_REVISADO";
+    public DateTime? FechaUltimaRevision { get; set; }
+    public int? UsuarioUltimaRevisionId { get; set; }
     public DateTime? ActualizadoEn { get; set; }
     public DateTime FechaCreacion { get; set; }
     public DateTime? FechaEnvio { get; set; }
