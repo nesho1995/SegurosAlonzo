@@ -189,10 +189,10 @@ public class ReclamoCorreoProcessingService
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
 
         if (analysis.RequiereRsa)
-            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de RSA");
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de pago de RSA");
 
         if (analysis.RequiereDeducible)
-            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de deducible");
+            await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de pago de deducible");
 
         if (analysis.SolicitaMasDocumentos)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Documento adicional solicitado por aseguradora");
@@ -201,9 +201,9 @@ public class ReclamoCorreoProcessingService
         if (analysis.Aprobado)
             acciones.Add("Se marco como aprobado por aseguradora.");
         if (analysis.RequiereRsa)
-            acciones.Add("Se habilito seguimiento de comprobante de RSA.");
+            acciones.Add("Se habilito seguimiento de comprobante de pago de RSA.");
         if (analysis.RequiereDeducible)
-            acciones.Add("Se habilito seguimiento de comprobante de deducible.");
+            acciones.Add("Se habilito seguimiento de comprobante de pago de deducible.");
         if (analysis.AprobadoSinPagosFinales || (analysis.Aprobado && !analysis.RequiereRsa && !analysis.RequiereDeducible && !analysis.SolicitaMasDocumentos))
             acciones.Add("Aprobado sin comprobantes finales pendientes; se informara al cliente que no se requiere RSA ni deducible.");
         if (analysis.SolicitaMasDocumentos)

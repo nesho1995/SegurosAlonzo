@@ -25,10 +25,10 @@ public class ReclamoHistoricoImportService
         ["BOLETADECIRCULACION"] = "Boleta de circulacion",
         ["BOLETADECIRCULACIONOREVISION"] = "Boleta de circulacion",
         ["COTIZACIONES"] = "2 cotizaciones de talleres",
-        ["PAGODEDUCIBLE"] = "Comprobante de deducible",
-        ["COMPROBANTEDEDEDUCIBLE"] = "Comprobante de deducible",
-        ["PAGORSA"] = "Comprobante de RSA",
-        ["COMPROBANTEDERSA"] = "Comprobante de RSA"
+        ["PAGODEDUCIBLE"] = "Comprobante de pago de deducible",
+        ["COMPROBANTEDEDEDUCIBLE"] = "Comprobante de pago de deducible",
+        ["PAGORSA"] = "Comprobante de pago de RSA",
+        ["COMPROBANTEDERSA"] = "Comprobante de pago de RSA"
     };
 
     public ReclamoHistoricoImportService(ReclamoRepository reclamos)
@@ -223,10 +223,10 @@ public class ReclamoHistoricoImportService
         var paid = ContainsAny(obs, "YAPAGO", "PAGADO", "CANCELADO", "REALIZOELPAGO", "HIZOELPAGO", "PAGODEDEDUCIBLEYRSA", "PAGOELDEDUCIBLE", "PAGOLARSA");
         var pending = ContainsAny(obs, "COBRO", "COBRANDO", "PENDIENTE", "SALDO", "FALTA", "HACEFALTA");
 
-        if (row.DocumentosRecibidos.TryGetValue("Comprobante de deducible", out var deducibleRecibido) && deducibleRecibido)
-            AddIfNeeded("Comprobante de deducible", !(mentionsDeducible && pending));
-        if (row.DocumentosRecibidos.TryGetValue("Comprobante de RSA", out var rsaRecibido) && rsaRecibido)
-            AddIfNeeded("Comprobante de RSA", !(mentionsRsa && pending));
+        if (row.DocumentosRecibidos.TryGetValue("Comprobante de pago de deducible", out var deducibleRecibido) && deducibleRecibido)
+            AddIfNeeded("Comprobante de pago de deducible", !(mentionsDeducible && pending));
+        if (row.DocumentosRecibidos.TryGetValue("Comprobante de pago de RSA", out var rsaRecibido) && rsaRecibido)
+            AddIfNeeded("Comprobante de pago de RSA", !(mentionsRsa && pending));
 
         if (string.IsNullOrWhiteSpace(obs))
             return result;
@@ -234,9 +234,9 @@ public class ReclamoHistoricoImportService
         var recibido = paid && !pending;
 
         if (mentionsDeducible)
-            AddIfNeeded("Comprobante de deducible", recibido);
+            AddIfNeeded("Comprobante de pago de deducible", recibido);
         if (mentionsRsa)
-            AddIfNeeded("Comprobante de RSA", recibido);
+            AddIfNeeded("Comprobante de pago de RSA", recibido);
 
         return result;
 

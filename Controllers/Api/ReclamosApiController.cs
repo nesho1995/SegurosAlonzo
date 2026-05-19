@@ -368,9 +368,9 @@ public class ReclamosApiController : ControllerBase
         if (aprobado)
         {
             if (analysis.RequiereRsa)
-                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de RSA");
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de pago de RSA");
             if (analysis.RequiereDeducible)
-                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de deducible");
+                await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Comprobante de pago de deducible");
             if (analysis.SolicitaMasDocumentos)
                 await _reclamos.AgregarDocumentoPendienteSiNoExisteAsync(id, "Documento adicional solicitado por aseguradora");
 

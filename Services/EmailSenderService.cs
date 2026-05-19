@@ -157,12 +157,12 @@ Quedamos atentos.
             "INFORME_TALLER" => "Informe de taller",
             "FINIQUITO" => "Finiquito",
             "AVISO_ACCIDENTE" => "Aviso de accidente",
-            "PAGO_DEDUCIBLE" => "Comprobante de deducible",
-            "COMPROBANTE_DE_DEDUCIBLE" => "Comprobante de deducible",
-            "PAGO_RSA" => "Comprobante de RSA",
-            "COMPROBANTE_DE_RSA" => "Comprobante de RSA",
-            "PAGO_COASEGURO" => "Comprobante de deducible",
-            "COMPROBANTE_DE_COASEGURO" => "Comprobante de deducible",
+            "PAGO_DEDUCIBLE" => "Comprobante de pago de deducible",
+            "COMPROBANTE_DE_DEDUCIBLE" => "Comprobante de pago de deducible",
+            "PAGO_RSA" => "Comprobante de pago de RSA",
+            "COMPROBANTE_DE_RSA" => "Comprobante de pago de RSA",
+            "PAGO_COASEGURO" => "Comprobante de pago de deducible",
+            "COMPROBANTE_DE_COASEGURO" => "Comprobante de pago de deducible",
             _ => value.Replace('_', ' ').Trim()
         };
     }

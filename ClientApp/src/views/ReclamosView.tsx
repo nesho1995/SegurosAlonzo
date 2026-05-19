@@ -192,7 +192,7 @@ export function ReclamosView() {
     await runAction(async () => {
       await registrarRespuestaAseguradora(selected.id, respuestaAseguradora, aseguradoraAprobado)
       setInsurerFormDirty(false)
-    }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron comprobantes de RSA/deducible si aplican.' : 'Respuesta de aseguradora guardada.')
+    }, aseguradoraAprobado ? 'Respuesta aprobada. Se habilitaron comprobantes de pago de RSA/deducible si aplican.' : 'Respuesta de aseguradora guardada.')
   }
 
   function confirmCompleteAndSend() {
@@ -350,7 +350,7 @@ export function ReclamosView() {
                     </button>
                   </div>
                 </AccordionSection>
-                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir RSA/deducible o documentos adicionales.">
+                <AccordionSection title="Respuesta de aseguradora" subtitle="Registra si el expediente fue aceptado para pedir pagos de RSA/deducible o documentos adicionales.">
                   <div className="insurer-box">
                     <label className="wide-field">
                       <span>Correo o respuesta recibida</span>
