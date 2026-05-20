@@ -68,7 +68,7 @@ Para poder avanzar con la gestion debe completar la siguiente documentacion:
 4. Licencia del conductor, ambos lados.
 5. Boleta de circulacion del vehiculo asegurado.
 6. Inspeccion puntual de danos (opcional, solo si la aseguradora la solicita).
-7. Dos cotizaciones de talleres de la red, cuando aplique.
+7. Dos cotizaciones de talleres de la red, cuando aplique (debe presentarse a dos talleres de la red para que ellos remitan las cotizaciones a la aseguradora).
 
 {bloqueTalleres}
 

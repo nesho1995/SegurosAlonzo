@@ -514,7 +514,7 @@ Atentamente.".Trim();
             "Licencia del conductor, ambos lados.",
             "Boleta de circulacion del vehiculo asegurado.",
             "Inspeccion puntual de danos (opcional, solo si la aseguradora la solicita).",
-            "Dos cotizaciones de talleres de la red, cuando aplique."
+            "Dos cotizaciones de talleres de la red, cuando aplique (debe presentarse a dos talleres de la red para que ellos remitan las cotizaciones a la aseguradora)."
         };
 
         return documents.Select((document, index) => $"{index + 1}. {document}").ToList();
