@@ -65,6 +65,21 @@ export function updateSeguimientoReclamo(id: number, estadoSeguimiento: string) 
   return requestJson(`/api/reclamos/${id}/seguimiento`, 'PUT', { estadoSeguimiento })
 }
 
+export type ReclamoSeguimientoOperativoPayload = {
+  montoDeducible?: number | null
+  montoRsa?: number | null
+  estadoDeducible?: string
+  estadoRsa?: string
+  estadoCotizaciones?: string
+  cotizacionesNota?: string
+  casoEspecial: boolean
+  casoEspecialNota?: string
+}
+
+export function updateSeguimientoOperativoReclamo(id: number, payload: ReclamoSeguimientoOperativoPayload) {
+  return requestJson(`/api/reclamos/${id}/seguimiento-operativo`, 'PUT', payload)
+}
+
 export function getSiguienteReclamoPendiente(actualId?: number) {
   const query = actualId ? `?actualId=${actualId}` : ''
   return getJson<{ item?: ClaimItem }>(`/api/reclamos/siguiente-pendiente${query}`)

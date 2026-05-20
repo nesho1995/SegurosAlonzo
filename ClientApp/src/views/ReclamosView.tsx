@@ -14,6 +14,7 @@ import {
   registrarRespuestaAseguradora,
   solicitarDocumentosReclamo,
   updateSeguimientoReclamo,
+  updateSeguimientoOperativoReclamo,
   updateCorreosAseguradora,
   updateDatosBasicosReclamo,
   updateReclamoDocumento,
@@ -54,6 +55,17 @@ export function ReclamosView() {
   const [insurerFormDirty, setInsurerFormDirty] = useState(false)
   const [datosBasicos, setDatosBasicos] = useState({ poliza: '', reclamo: '', placa: '', celular: '', ciudad: '' })
   const [datosBasicosDirty, setDatosBasicosDirty] = useState(false)
+  const [operativo, setOperativo] = useState({
+    montoDeducible: '',
+    montoRsa: '',
+    estadoDeducible: 'NO_APLICA',
+    estadoRsa: 'NO_APLICA',
+    estadoCotizaciones: 'PENDIENTE_VISITA_TALLERES',
+    cotizacionesNota: '',
+    casoEspecial: false,
+    casoEspecialNota: '',
+  })
+  const [operativoDirty, setOperativoDirty] = useState(false)
 
   async function aceptarExcepcionDocumento(doc: ClaimPendingDocument) {
     if (!selected) return
@@ -120,6 +132,17 @@ export function ReclamosView() {
       ciudad: selected.ciudadDetectada || '',
     })
     setDatosBasicosDirty(false)
+    setOperativo({
+      montoDeducible: selected.montoDeducible?.toString() || '',
+      montoRsa: selected.montoRsa?.toString() || '',
+      estadoDeducible: selected.estadoDeducible || 'NO_APLICA',
+      estadoRsa: selected.estadoRsa || 'NO_APLICA',
+      estadoCotizaciones: selected.estadoCotizaciones || 'PENDIENTE_VISITA_TALLERES',
+      cotizacionesNota: selected.cotizacionesNota || '',
+      casoEspecial: !!selected.casoEspecial,
+      casoEspecialNota: selected.casoEspecialNota || '',
+    })
+    setOperativoDirty(false)
     getReclamoChecklist(selected.id, selected.tipoReclamo)
       .then((res) => {
         setChecklist(res.requisitos)
@@ -158,7 +181,7 @@ export function ReclamosView() {
     if (actionBusy) return
     if (selected) await refreshSelected()
     else await load()
-  }, 10000, !actionBusy && !insurerFormDirty && !datosBasicosDirty)
+  }, 10000, !actionBusy && !insurerFormDirty && !datosBasicosDirty && !operativoDirty)
 
   async function runAction(action: () => Promise<unknown>, success: string) {
     setActionBusy(true)
@@ -217,6 +240,24 @@ export function ReclamosView() {
     }, 'Estado de seguimiento actualizado.')
   }
 
+  async function saveOperativo() {
+    if (!selected) return
+    const toNumber = (value: string) => value.trim() ? Number(value) : null
+    await runAction(async () => {
+      await updateSeguimientoOperativoReclamo(selected.id, {
+        montoDeducible: toNumber(operativo.montoDeducible),
+        montoRsa: toNumber(operativo.montoRsa),
+        estadoDeducible: operativo.estadoDeducible,
+        estadoRsa: operativo.estadoRsa,
+        estadoCotizaciones: operativo.estadoCotizaciones,
+        cotizacionesNota: operativo.cotizacionesNota,
+        casoEspecial: operativo.casoEspecial,
+        casoEspecialNota: operativo.casoEspecialNota,
+      })
+      setOperativoDirty(false)
+    }, 'Seguimiento operativo guardado.')
+  }
+
   async function goNextPending() {
     const response = await getSiguienteReclamoPendiente(selected?.id)
     if (response.item) {
@@ -241,7 +282,7 @@ export function ReclamosView() {
   return (
     <div className="reclamos-page">
       <PageHeader eyebrow="Reclamos" title="Expedientes de reclamos" description="Consulta reclamos y adjunta documentos de respaldo sin tocar el flujo probado de WhatsApp." onRefresh={load} />
-      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'NO_REVISADO', 'EN_REVISION', 'ESPERANDO_CLIENTE', 'ESPERANDO_ASEGURADORA', 'LISTO', 'PENDIENTES_PAGO', 'SIN_RESPUESTA_ASEGURADORA', 'CON_RESPUESTA_ASEGURADORA', 'SIN_TELEFONO', 'SIN_POLIZA', 'EN_SEGUIMIENTO', 'DOCUMENTOS_PENDIENTES', 'COMPLETO', 'ERROR']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
+      <Toolbar buscar={buscar} estado={estado} estados={['TODOS', 'NO_REVISADO', 'EN_REVISION', 'ESPERANDO_CLIENTE', 'ESPERANDO_ASEGURADORA', 'LISTO', 'PENDIENTES_PAGO', 'PAGO_DEDUCIBLE_PENDIENTE', 'PAGO_RSA_PENDIENTE', 'PENDIENTE_MONTO', 'PENDIENTE_COTIZACIONES', 'CASO_ESPECIAL', 'SIN_RESPUESTA_ASEGURADORA', 'CON_RESPUESTA_ASEGURADORA', 'SIN_TELEFONO', 'SIN_POLIZA', 'EN_SEGUIMIENTO', 'DOCUMENTOS_PENDIENTES', 'COMPLETO', 'ERROR']} onBuscar={setBuscar} onEstado={setEstado} onSubmit={load} />
       {loading && <LoadingCard text="Cargando reclamos..." />}
       {error && <ErrorCard text={error} />}
       {data && (
@@ -279,6 +320,10 @@ export function ReclamosView() {
                   <div className="info-item"><span>WhatsApp</span><strong>{statusLabel(selected.estadoReclamo || selected.estado)}</strong></div>
                   <div className="info-item"><span>Seguimiento</span><strong>{statusLabel(selected.estadoSeguimiento || 'NO_REVISADO')}</strong></div>
                   <div className="info-item"><span>Ultima revision</span><strong>{selected.fechaUltimaRevision ? dateFmt.format(new Date(selected.fechaUltimaRevision)) : 'Sin revisar'}</strong></div>
+                  <div className="info-item"><span>Deducible</span><strong>{statusLabel(selected.estadoDeducible || 'NO_APLICA')}{selected.montoDeducible ? ` - L ${selected.montoDeducible}` : ''}</strong></div>
+                  <div className="info-item"><span>RSA</span><strong>{statusLabel(selected.estadoRsa || 'NO_APLICA')}{selected.montoRsa ? ` - L ${selected.montoRsa}` : ''}</strong></div>
+                  <div className="info-item"><span>Cotizaciones</span><strong>{statusLabel(selected.estadoCotizaciones || 'PENDIENTE_VISITA_TALLERES')}</strong></div>
+                  <div className="info-item"><span>Especial</span><strong>{selected.casoEspecial ? 'Si' : 'No'}</strong></div>
                 </div>
                 {selected.descripcion && (
                   <div className="inline-alert info" style={{ whiteSpace: 'pre-wrap', fontSize: '0.85rem' }}>{selected.descripcion}</div>
@@ -307,6 +352,57 @@ export function ReclamosView() {
                     </label>
                     <button className="icon-button secondary" disabled={actionBusy || !datosBasicosDirty} onClick={() => void saveDatosBasicos()}>
                       Guardar datos
+                    </button>
+                  </div>
+                </AccordionSection>
+                <AccordionSection title="Seguimiento operativo" subtitle="Montos, pagos finales, cotizaciones y casos especiales.">
+                  <div className="insurer-box">
+                    <label className="field compact-field">
+                      <span>Monto deducible (LPS)</span>
+                      <input type="number" min="0" step="0.01" value={operativo.montoDeducible} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, montoDeducible: event.target.value }) }} placeholder="Pendiente" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Estado deducible</span>
+                      <select value={operativo.estadoDeducible} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, estadoDeducible: event.target.value }) }}>
+                        {['NO_APLICA', 'PENDIENTE_MONTO', 'PENDIENTE_PAGO', 'PAGADO_CLIENTE', 'COMPROBANTE_ENVIADO', 'CONFIRMADO_ASEGURADORA'].map((item) => (
+                          <option key={item} value={item}>{statusLabel(item)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field compact-field">
+                      <span>Monto RSA (LPS)</span>
+                      <input type="number" min="0" step="0.01" value={operativo.montoRsa} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, montoRsa: event.target.value }) }} placeholder="Pendiente" />
+                    </label>
+                    <label className="field compact-field">
+                      <span>Estado RSA</span>
+                      <select value={operativo.estadoRsa} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, estadoRsa: event.target.value }) }}>
+                        {['NO_APLICA', 'PENDIENTE_MONTO', 'PENDIENTE_PAGO', 'PAGADO_CLIENTE', 'COMPROBANTE_ENVIADO', 'CONFIRMADO_ASEGURADORA'].map((item) => (
+                          <option key={item} value={item}>{statusLabel(item)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field compact-field">
+                      <span>Cotizaciones</span>
+                      <select value={operativo.estadoCotizaciones} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, estadoCotizaciones: event.target.value }) }}>
+                        {['PENDIENTE_VISITA_TALLERES', 'CLIENTE_INDICO_QUE_FUE', 'TALLER_INDICO_QUE_ENVIO', 'ASEGURADORA_CONFIRMADAS', 'NO_APLICA'].map((item) => (
+                          <option key={item} value={item}>{statusLabel(item)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="wide-field">
+                      <span>Nota de cotizaciones</span>
+                      <textarea rows={2} value={operativo.cotizacionesNota} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, cotizacionesNota: event.target.value }) }} placeholder="Ej: cliente indico que ya fue a dos talleres; pendiente confirmar recibido por aseguradora." />
+                    </label>
+                    <label className="check-field">
+                      <input type="checkbox" checked={operativo.casoEspecial} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, casoEspecial: event.target.checked }) }} />
+                      Caso especial
+                    </label>
+                    <label className="wide-field">
+                      <span>Nota caso especial</span>
+                      <textarea rows={2} value={operativo.casoEspecialNota} onChange={(event) => { setOperativoDirty(true); setOperativo({ ...operativo, casoEspecialNota: event.target.value }) }} placeholder="Deja aqui la razon operativa para darle seguimiento aparte." />
+                    </label>
+                    <button className="icon-button secondary" disabled={actionBusy || !operativoDirty} onClick={() => void saveOperativo()}>
+                      Guardar seguimiento
                     </button>
                   </div>
                 </AccordionSection>
@@ -422,6 +518,13 @@ export function ReclamosView() {
                         </summary>
                         <div className="mail-review-detail">
                           <div style={{ whiteSpace: 'pre-wrap' }}>{item.respuesta}</div>
+                          {(item.requiereDeducible || item.requiereRsa) && (
+                            <div>
+                              <strong>Pagos detectados:</strong>
+                              {item.requiereDeducible ? ` Deducible${item.montoDeducible ? ` L ${item.montoDeducible}` : ' sin monto'}.` : ''}
+                              {item.requiereRsa ? ` RSA${item.montoRsa ? ` L ${item.montoRsa}` : ' sin monto'}.` : ''}
+                            </div>
+                          )}
                           {item.acciones && <div><strong>Acciones:</strong> {item.acciones}</div>}
                         </div>
                       </details>

@@ -187,6 +187,7 @@ public class ReclamoCorreoProcessingService
             return false;
 
         await _repo.RegistrarRespuestaAseguradoraCorreoAsync(reclamo.Id, BuildInsuranceResponseText(email), analysis.Aprobado);
+        await _repo.AplicarAnalisisAseguradoraAsync(reclamo.Id, analysis);
 
         if (analysis.RequiereRsa)
             await _repo.AgregarDocumentoPendienteSiNoExisteAsync(reclamo.Id, "Comprobante de pago de RSA");

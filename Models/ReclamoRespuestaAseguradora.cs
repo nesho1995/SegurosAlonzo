@@ -11,6 +11,8 @@ public class ReclamoRespuestaAseguradora
     public bool Aprobado { get; set; }
     public bool RequiereRsa { get; set; }
     public bool RequiereDeducible { get; set; }
+    public decimal? MontoRsa { get; set; }
+    public decimal? MontoDeducible { get; set; }
     public bool SolicitaMasDocumentos { get; set; }
     public bool AprobadoSinPagosFinales { get; set; }
     public string? Acciones { get; set; }

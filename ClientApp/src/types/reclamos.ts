@@ -28,6 +28,17 @@ export type ClaimItem = {
   respuestaAseguradora?: string
   fechaRespuestaAseguradora?: string
   aseguradoraAprobado?: boolean
+  montoDeducible?: number
+  montoRsa?: number
+  monedaPagosFinales?: string
+  estadoDeducible?: string
+  estadoRsa?: string
+  fechaSolicitudDeducible?: string
+  fechaSolicitudRsa?: string
+  estadoCotizaciones?: string
+  cotizacionesNota?: string
+  casoEspecial?: boolean
+  casoEspecialNota?: string
   estadoSeguimiento?: string
   fechaUltimaRevision?: string
   usuarioUltimaRevisionId?: number
@@ -58,6 +69,8 @@ export type ClaimInsuranceResponse = {
   aprobado: boolean
   requiereRsa: boolean
   requiereDeducible: boolean
+  montoRsa?: number
+  montoDeducible?: number
   solicitaMasDocumentos: boolean
   aprobadoSinPagosFinales: boolean
   acciones?: string

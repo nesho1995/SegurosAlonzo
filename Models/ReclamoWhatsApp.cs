@@ -35,6 +35,17 @@ public class ReclamoWhatsApp
     public string? RespuestaAseguradora { get; set; }
     public DateTime? FechaRespuestaAseguradora { get; set; }
     public bool AseguradoraAprobado { get; set; }
+    public decimal? MontoDeducible { get; set; }
+    public decimal? MontoRsa { get; set; }
+    public string MonedaPagosFinales { get; set; } = "LPS";
+    public string EstadoDeducible { get; set; } = "NO_APLICA";
+    public string EstadoRsa { get; set; } = "NO_APLICA";
+    public DateTime? FechaSolicitudDeducible { get; set; }
+    public DateTime? FechaSolicitudRsa { get; set; }
+    public string EstadoCotizaciones { get; set; } = "PENDIENTE_VISITA_TALLERES";
+    public string? CotizacionesNota { get; set; }
+    public bool CasoEspecial { get; set; }
+    public string? CasoEspecialNota { get; set; }
     public string EstadoSeguimiento { get; set; } = "NO_REVISADO";
     public DateTime? FechaUltimaRevision { get; set; }
     public int? UsuarioUltimaRevisionId { get; set; }

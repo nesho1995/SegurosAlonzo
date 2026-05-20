@@ -10,6 +10,8 @@ public sealed record InsuranceResponseAnalysis(
     bool Denegado,
     bool RequiereRsa,
     bool RequiereDeducible,
+    decimal? MontoRsa,
+    decimal? MontoDeducible,
     bool AprobadoSinPagosFinales,
     bool SolicitaMasDocumentos,
     bool TieneSenales);
@@ -272,12 +274,16 @@ public static class InsuranceResponseAnalyzer
 
         var isApproved = approved || (!denied && (requiresRsa || requiresDeducible));
         var hasSignals = isApproved || denied || mentionsRsa || mentionsCoaseguro || mentionsDeducible || noFinalPayments || moreDocs;
+        var montoRsa = requiresRsa ? DetectAmountNear(value, "RSA", "RESTITUCION", "RESTITUIR", "SUMA ASEGURADA") : null;
+        var montoDeducible = requiresDeducible ? DetectAmountNear(value, "DEDUCIBLE", "DEDUCIBLES", "COASEGURO", "CO ASEGURO", "COPAGO", "CO PAGO") : null;
 
         return new InsuranceResponseAnalysis(
             isApproved,
             denied,
             requiresRsa,
             requiresDeducible,
+            montoRsa,
+            montoDeducible,
             isApproved && !requiresRsa && !requiresDeducible && noFinalPayments,
             moreDocs,
             hasSignals);
@@ -301,4 +307,57 @@ public static class InsuranceResponseAnalyzer
 
     private static bool ContainsAny(string text, params string[] values)
         => values.Any(value => text.Contains(value, StringComparison.Ordinal));
+
+    private static decimal? DetectAmountNear(string? raw, params string[] terms)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var text = NormalizeForMatch(raw);
+        foreach (var term in terms.Select(NormalizeForMatch).Where(x => x.Length > 0))
+        {
+            foreach (Match match in Regex.Matches(text, Regex.Escape(term), RegexOptions.CultureInvariant))
+            {
+                var start = Math.Max(0, match.Index - 80);
+                var length = Math.Min(text.Length - start, match.Length + 160);
+                var window = text.Substring(start, length);
+                var amount = ExtractFirstAmount(window);
+                if (amount.HasValue)
+                    return amount;
+            }
+        }
+
+        return null;
+    }
+
+    private static decimal? ExtractFirstAmount(string text)
+    {
+        var match = Regex.Match(
+            text,
+            @"(?:\b(?:L|LPS|HNL)\.?\s*)?([0-9]{1,3}(?:[,.][0-9]{3})+(?:[,.][0-9]{2})?|[0-9]+(?:[,.][0-9]{2})?)",
+            RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return null;
+
+        var value = match.Groups[1].Value;
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var lastComma = value.LastIndexOf(',');
+        var lastDot = value.LastIndexOf('.');
+        var decimalSeparator = lastComma > lastDot ? ',' : '.';
+        var hasDecimal = (decimalSeparator == ',' && lastComma >= 0 && value.Length - lastComma - 1 == 2)
+            || (decimalSeparator == '.' && lastDot >= 0 && value.Length - lastDot - 1 == 2);
+
+        if (hasDecimal)
+        {
+            var normalized = value
+                .Replace(decimalSeparator == ',' ? "." : ",", "")
+                .Replace(decimalSeparator, '.');
+            return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ? amount : null;
+        }
+
+        var whole = value.Replace(",", "").Replace(".", "");
+        return decimal.TryParse(whole, NumberStyles.Number, CultureInfo.InvariantCulture, out var wholeAmount) ? wholeAmount : null;
+    }
 }

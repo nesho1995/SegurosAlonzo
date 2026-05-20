@@ -97,8 +97,27 @@ public class WhatsAppConversacionRepository
 
         if (!string.IsNullOrWhiteSpace(buscar))
         {
-            where.Add("(c.nombre_contacto LIKE @buscar OR c.telefono LIKE @buscar OR cl.nombre LIKE @buscar)");
-            p.Add("buscar", $"%{buscar.Trim()}%");
+            var text = buscar.Trim();
+            var compact = CompactSearch(text);
+            where.Add(@"(
+                c.nombre_contacto LIKE @buscar
+                OR c.telefono LIKE @buscar
+                OR cl.nombre LIKE @buscar
+                OR r.conductor LIKE @buscar
+                OR r.asegurado LIKE @buscar
+                OR r.reclamo LIKE @buscar
+                OR r.numero_reclamo LIKE @buscar
+                OR r.placa LIKE @buscar
+                OR r.poliza LIKE @buscar
+                OR r.celular LIKE @buscar
+                OR REPLACE(REPLACE(REPLACE(COALESCE(c.telefono, ''), '-', ''), ' ', ''), '+', '') LIKE @compact
+                OR REPLACE(REPLACE(REPLACE(COALESCE(r.celular, ''), '-', ''), ' ', ''), '+', '') LIKE @compact
+                OR REPLACE(REPLACE(UPPER(COALESCE(r.placa, '')), '-', ''), ' ', '') LIKE @compact
+                OR REPLACE(REPLACE(UPPER(COALESCE(r.reclamo, '')), '-', ''), ' ', '') LIKE @compact
+                OR REPLACE(REPLACE(UPPER(COALESCE(r.numero_reclamo, '')), '-', ''), ' ', '') LIKE @compact
+            )");
+            p.Add("buscar", $"%{text}%");
+            p.Add("compact", $"%{compact}%");
         }
 
         var whereSql = where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
@@ -149,6 +168,7 @@ public class WhatsAppConversacionRepository
             SELECT COUNT(*)
             FROM whatsapp_conversaciones c
             LEFT JOIN clientes cl ON cl.id = c.cliente_id
+            LEFT JOIN reclamos_whatsapp r ON r.id = c.reclamo_id
             {whereSql}";
 
         var items = await cn.QueryAsync<ConversacionListItem>(sql, p);
@@ -368,4 +388,7 @@ public class WhatsAppConversacionRepository
             WHERE u.IsActive = 1
             ORDER BY u.Username");
     }
+
+    private static string CompactSearch(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 }

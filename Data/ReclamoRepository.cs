@@ -32,6 +32,11 @@ public class ReclamoRepository
                 correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
                 respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
                 aseguradora_aprobado AseguradoraAprobado,
+                monto_deducible MontoDeducible, monto_rsa MontoRsa, moneda_pagos_finales MonedaPagosFinales,
+                estado_deducible EstadoDeducible, estado_rsa EstadoRsa,
+                fecha_solicitud_deducible FechaSolicitudDeducible, fecha_solicitud_rsa FechaSolicitudRsa,
+                estado_cotizaciones EstadoCotizaciones, cotizaciones_nota CotizacionesNota,
+                caso_especial CasoEspecial, caso_especial_nota CasoEspecialNota,
                 estado_seguimiento EstadoSeguimiento, fecha_ultima_revision FechaUltimaRevision,
                 usuario_ultima_revision_id UsuarioUltimaRevisionId,
                 actualizado_en ActualizadoEn,
@@ -62,6 +67,11 @@ public class ReclamoRepository
                 correo_aseguradora_principal CorreoAseguradoraPrincipal, correo_aseguradora_copia CorreoAseguradoraCopia,
                 respuesta_aseguradora RespuestaAseguradora, fecha_respuesta_aseguradora FechaRespuestaAseguradora,
                 aseguradora_aprobado AseguradoraAprobado,
+                monto_deducible MontoDeducible, monto_rsa MontoRsa, moneda_pagos_finales MonedaPagosFinales,
+                estado_deducible EstadoDeducible, estado_rsa EstadoRsa,
+                fecha_solicitud_deducible FechaSolicitudDeducible, fecha_solicitud_rsa FechaSolicitudRsa,
+                estado_cotizaciones EstadoCotizaciones, cotizaciones_nota CotizacionesNota,
+                caso_especial CasoEspecial, caso_especial_nota CasoEspecialNota,
                 estado_seguimiento EstadoSeguimiento, fecha_ultima_revision FechaUltimaRevision,
                 usuario_ultima_revision_id UsuarioUltimaRevisionId,
                 actualizado_en ActualizadoEn,
@@ -540,13 +550,13 @@ public class ReclamoRepository
             INSERT INTO reclamo_respuestas_aseguradora
             (
                 reclamo_id, origen, remitente, asunto, respuesta, aprobado,
-                requiere_rsa, requiere_deducible, solicita_mas_documentos,
+                requiere_rsa, requiere_deducible, monto_rsa, monto_deducible, solicita_mas_documentos,
                 aprobado_sin_pagos_finales, acciones, usuario_id
             )
             VALUES
             (
                 @reclamoId, @origen, @remitente, @asunto, @respuesta, @aprobado,
-                @requiereRsa, @requiereDeducible, @solicitaMasDocumentos,
+                @requiereRsa, @requiereDeducible, @montoRsa, @montoDeducible, @solicitaMasDocumentos,
                 @aprobadoSinPagosFinales, @acciones, @usuarioId
             );
             SELECT LAST_INSERT_ID();";
@@ -561,10 +571,68 @@ public class ReclamoRepository
             aprobado = analysis.Aprobado,
             requiereRsa = analysis.RequiereRsa,
             requiereDeducible = analysis.RequiereDeducible,
+            montoRsa = analysis.MontoRsa,
+            montoDeducible = analysis.MontoDeducible,
             solicitaMasDocumentos = analysis.SolicitaMasDocumentos,
             aprobadoSinPagosFinales = analysis.AprobadoSinPagosFinales,
             acciones,
             usuarioId
+        });
+    }
+
+    public async Task AplicarAnalisisAseguradoraAsync(int id, InsuranceResponseAnalysis analysis)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET moneda_pagos_finales = 'LPS',
+                monto_deducible = CASE
+                    WHEN @requiereDeducible = 1 AND @montoDeducible IS NOT NULL THEN @montoDeducible
+                    ELSE monto_deducible
+                END,
+                monto_rsa = CASE
+                    WHEN @requiereRsa = 1 AND @montoRsa IS NOT NULL THEN @montoRsa
+                    ELSE monto_rsa
+                END,
+                estado_deducible = CASE
+                    WHEN @requiereDeducible = 1 AND @montoDeducible IS NOT NULL THEN 'PENDIENTE_PAGO'
+                    WHEN @requiereDeducible = 1 THEN 'PENDIENTE_MONTO'
+                    ELSE estado_deducible
+                END,
+                estado_rsa = CASE
+                    WHEN @requiereRsa = 1 AND @montoRsa IS NOT NULL THEN 'PENDIENTE_PAGO'
+                    WHEN @requiereRsa = 1 THEN 'PENDIENTE_MONTO'
+                    ELSE estado_rsa
+                END,
+                fecha_solicitud_deducible = CASE
+                    WHEN @requiereDeducible = 1 THEN IFNULL(fecha_solicitud_deducible, NOW())
+                    ELSE fecha_solicitud_deducible
+                END,
+                fecha_solicitud_rsa = CASE
+                    WHEN @requiereRsa = 1 THEN IFNULL(fecha_solicitud_rsa, NOW())
+                    ELSE fecha_solicitud_rsa
+                END,
+                estado_seguimiento = CASE
+                    WHEN @requiereDeducible = 1 OR @requiereRsa = 1 THEN 'ESPERANDO_CLIENTE'
+                    WHEN @solicitaMasDocumentos = 1 THEN 'ESPERANDO_CLIENTE'
+                    WHEN @aprobado = 1 THEN 'LISTO'
+                    ELSE estado_seguimiento
+                END,
+                fecha_ultima_revision = NOW(),
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            requiereDeducible = analysis.RequiereDeducible,
+            requiereRsa = analysis.RequiereRsa,
+            montoDeducible = analysis.MontoDeducible,
+            montoRsa = analysis.MontoRsa,
+            solicitaMasDocumentos = analysis.SolicitaMasDocumentos,
+            aprobado = analysis.Aprobado
         });
     }
 
@@ -611,6 +679,8 @@ public class ReclamoRepository
                 aprobado Aprobado,
                 requiere_rsa RequiereRsa,
                 requiere_deducible RequiereDeducible,
+                monto_rsa MontoRsa,
+                monto_deducible MontoDeducible,
                 solicita_mas_documentos SolicitaMasDocumentos,
                 aprobado_sin_pagos_finales AprobadoSinPagosFinales,
                 acciones Acciones,
@@ -640,6 +710,53 @@ public class ReclamoRepository
         await cn.ExecuteAsync(sql, new { id, estado, usuarioId });
     }
 
+    public async Task UpdateSeguimientoOperativoAsync(int id, ReclamoSeguimientoOperativoRequest request, int? usuarioId)
+    {
+        await EnsureSchemaAsync();
+        using var cn = _factory.CreateConnection();
+
+        var estadoDeducible = NormalizeEstadoPagoFinal(request.EstadoDeducible);
+        var estadoRsa = NormalizeEstadoPagoFinal(request.EstadoRsa);
+        var estadoCotizaciones = NormalizeEstadoCotizaciones(request.EstadoCotizaciones);
+        const string sql = @"
+            UPDATE reclamos_whatsapp
+            SET monto_deducible = @montoDeducible,
+                monto_rsa = @montoRsa,
+                moneda_pagos_finales = 'LPS',
+                estado_deducible = @estadoDeducible,
+                estado_rsa = @estadoRsa,
+                fecha_solicitud_deducible = CASE
+                    WHEN @estadoDeducible IN ('PENDIENTE_MONTO','PENDIENTE_PAGO') THEN IFNULL(fecha_solicitud_deducible, NOW())
+                    ELSE fecha_solicitud_deducible
+                END,
+                fecha_solicitud_rsa = CASE
+                    WHEN @estadoRsa IN ('PENDIENTE_MONTO','PENDIENTE_PAGO') THEN IFNULL(fecha_solicitud_rsa, NOW())
+                    ELSE fecha_solicitud_rsa
+                END,
+                estado_cotizaciones = @estadoCotizaciones,
+                cotizaciones_nota = @cotizacionesNota,
+                caso_especial = @casoEspecial,
+                caso_especial_nota = @casoEspecialNota,
+                fecha_ultima_revision = NOW(),
+                usuario_ultima_revision_id = @usuarioId,
+                actualizado_en = NOW()
+            WHERE id = @id;";
+
+        await cn.ExecuteAsync(sql, new
+        {
+            id,
+            montoDeducible = request.MontoDeducible,
+            montoRsa = request.MontoRsa,
+            estadoDeducible,
+            estadoRsa,
+            estadoCotizaciones,
+            cotizacionesNota = string.IsNullOrWhiteSpace(request.CotizacionesNota) ? null : request.CotizacionesNota.Trim(),
+            casoEspecial = request.CasoEspecial,
+            casoEspecialNota = string.IsNullOrWhiteSpace(request.CasoEspecialNota) ? null : request.CasoEspecialNota.Trim(),
+            usuarioId
+        });
+    }
+
     public async Task<ReclamoWhatsApp?> GetSiguientePendienteAsync(int? currentId = null)
     {
         await EnsureSchemaAsync();
@@ -659,6 +776,11 @@ public class ReclamoRepository
                 r.correo_aseguradora_principal CorreoAseguradoraPrincipal, r.correo_aseguradora_copia CorreoAseguradoraCopia,
                 r.respuesta_aseguradora RespuestaAseguradora, r.fecha_respuesta_aseguradora FechaRespuestaAseguradora,
                 r.aseguradora_aprobado AseguradoraAprobado,
+                r.monto_deducible MontoDeducible, r.monto_rsa MontoRsa, r.moneda_pagos_finales MonedaPagosFinales,
+                r.estado_deducible EstadoDeducible, r.estado_rsa EstadoRsa,
+                r.fecha_solicitud_deducible FechaSolicitudDeducible, r.fecha_solicitud_rsa FechaSolicitudRsa,
+                r.estado_cotizaciones EstadoCotizaciones, r.cotizaciones_nota CotizacionesNota,
+                r.caso_especial CasoEspecial, r.caso_especial_nota CasoEspecialNota,
                 r.estado_seguimiento EstadoSeguimiento, r.fecha_ultima_revision FechaUltimaRevision,
                 r.usuario_ultima_revision_id UsuarioUltimaRevisionId,
                 r.actualizado_en ActualizadoEn,
@@ -916,6 +1038,17 @@ public class ReclamoRepository
                 ADD COLUMN IF NOT EXISTS respuesta_aseguradora TEXT NULL,
                 ADD COLUMN IF NOT EXISTS fecha_respuesta_aseguradora DATETIME NULL,
                 ADD COLUMN IF NOT EXISTS aseguradora_aprobado TINYINT(1) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS monto_deducible DECIMAL(18,2) NULL,
+                ADD COLUMN IF NOT EXISTS monto_rsa DECIMAL(18,2) NULL,
+                ADD COLUMN IF NOT EXISTS moneda_pagos_finales VARCHAR(10) NOT NULL DEFAULT 'LPS',
+                ADD COLUMN IF NOT EXISTS estado_deducible VARCHAR(40) NOT NULL DEFAULT 'NO_APLICA',
+                ADD COLUMN IF NOT EXISTS estado_rsa VARCHAR(40) NOT NULL DEFAULT 'NO_APLICA',
+                ADD COLUMN IF NOT EXISTS fecha_solicitud_deducible DATETIME NULL,
+                ADD COLUMN IF NOT EXISTS fecha_solicitud_rsa DATETIME NULL,
+                ADD COLUMN IF NOT EXISTS estado_cotizaciones VARCHAR(50) NOT NULL DEFAULT 'PENDIENTE_VISITA_TALLERES',
+                ADD COLUMN IF NOT EXISTS cotizaciones_nota TEXT NULL,
+                ADD COLUMN IF NOT EXISTS caso_especial TINYINT(1) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS caso_especial_nota TEXT NULL,
                 ADD COLUMN IF NOT EXISTS estado_seguimiento VARCHAR(40) NOT NULL DEFAULT 'NO_REVISADO',
                 ADD COLUMN IF NOT EXISTS fecha_ultima_revision DATETIME NULL,
                 ADD COLUMN IF NOT EXISTS usuario_ultima_revision_id INT NULL,
@@ -964,6 +1097,8 @@ public class ReclamoRepository
                 aprobado TINYINT(1) NOT NULL DEFAULT 0,
                 requiere_rsa TINYINT(1) NOT NULL DEFAULT 0,
                 requiere_deducible TINYINT(1) NOT NULL DEFAULT 0,
+                monto_rsa DECIMAL(18,2) NULL,
+                monto_deducible DECIMAL(18,2) NULL,
                 solicita_mas_documentos TINYINT(1) NOT NULL DEFAULT 0,
                 aprobado_sin_pagos_finales TINYINT(1) NOT NULL DEFAULT 0,
                 acciones TEXT NULL,
@@ -971,6 +1106,11 @@ public class ReclamoRepository
                 creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 INDEX ix_reclamo_respuestas_reclamo_fecha (reclamo_id, creado_en)
             );");
+
+        await cn.ExecuteAsync(@"
+            ALTER TABLE reclamo_respuestas_aseguradora
+                ADD COLUMN IF NOT EXISTS monto_rsa DECIMAL(18,2) NULL AFTER requiere_deducible,
+                ADD COLUMN IF NOT EXISTS monto_deducible DECIMAL(18,2) NULL AFTER monto_rsa;");
 
         await cn.ExecuteAsync(@"
             ALTER TABLE reclamo_documentos
@@ -1000,5 +1140,21 @@ public class ReclamoRepository
         return normalized is "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"
             ? normalized
             : "EN_REVISION";
+    }
+
+    private static string NormalizeEstadoPagoFinal(string? value)
+    {
+        var normalized = (value ?? "").Trim().ToUpperInvariant();
+        return normalized is "NO_APLICA" or "PENDIENTE_MONTO" or "PENDIENTE_PAGO" or "PAGADO_CLIENTE" or "COMPROBANTE_ENVIADO" or "CONFIRMADO_ASEGURADORA"
+            ? normalized
+            : "NO_APLICA";
+    }
+
+    private static string NormalizeEstadoCotizaciones(string? value)
+    {
+        var normalized = (value ?? "").Trim().ToUpperInvariant();
+        return normalized is "PENDIENTE_VISITA_TALLERES" or "CLIENTE_INDICO_QUE_FUE" or "TALLER_INDICO_QUE_ENVIO" or "ASEGURADORA_CONFIRMADAS" or "NO_APLICA"
+            ? normalized
+            : "PENDIENTE_VISITA_TALLERES";
     }
 }

@@ -36,7 +36,7 @@ public class ReclamosApiController : ControllerBase
         var specialEstado = (estado ?? "TODOS").Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(estado)
             && specialEstado != "TODOS"
-            && specialEstado is not ("PENDIENTES_PAGO" or "SIN_RESPUESTA_ASEGURADORA" or "CON_RESPUESTA_ASEGURADORA" or "SIN_TELEFONO" or "SIN_POLIZA" or "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"))
+            && specialEstado is not ("PENDIENTES_PAGO" or "PAGO_DEDUCIBLE_PENDIENTE" or "PAGO_RSA_PENDIENTE" or "PENDIENTE_MONTO" or "PENDIENTE_COTIZACIONES" or "CASO_ESPECIAL" or "SIN_RESPUESTA_ASEGURADORA" or "CON_RESPUESTA_ASEGURADORA" or "SIN_TELEFONO" or "SIN_POLIZA" or "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"))
         {
             items = items.Where(x => (x.EstadoReclamo ?? x.Estado) == estado);
         }
@@ -76,6 +76,11 @@ public class ReclamosApiController : ControllerBase
             if (specialEstado == "CON_RESPUESTA_ASEGURADORA" && string.IsNullOrWhiteSpace(item.RespuestaAseguradora)) continue;
             if (specialEstado == "SIN_TELEFONO" && !string.IsNullOrWhiteSpace(item.Celular)) continue;
             if (specialEstado == "SIN_POLIZA" && !string.IsNullOrWhiteSpace(item.Poliza)) continue;
+            if (specialEstado == "PAGO_DEDUCIBLE_PENDIENTE" && item.EstadoDeducible is not ("PENDIENTE_MONTO" or "PENDIENTE_PAGO")) continue;
+            if (specialEstado == "PAGO_RSA_PENDIENTE" && item.EstadoRsa is not ("PENDIENTE_MONTO" or "PENDIENTE_PAGO")) continue;
+            if (specialEstado == "PENDIENTE_MONTO" && item.EstadoDeducible != "PENDIENTE_MONTO" && item.EstadoRsa != "PENDIENTE_MONTO") continue;
+            if (specialEstado == "PENDIENTE_COTIZACIONES" && (item.EstadoCotizaciones is "ASEGURADORA_CONFIRMADAS" or "NO_APLICA")) continue;
+            if (specialEstado == "CASO_ESPECIAL" && !item.CasoEspecial) continue;
             if (specialEstado is "NO_REVISADO" or "EN_REVISION" or "ESPERANDO_CLIENTE" or "ESPERANDO_ASEGURADORA" or "LISTO"
                 && !string.Equals(estadoSeguimiento, specialEstado, StringComparison.OrdinalIgnoreCase)) continue;
 
@@ -108,6 +113,17 @@ public class ReclamosApiController : ControllerBase
                 item.RespuestaAseguradora,
                 item.FechaRespuestaAseguradora,
                 item.AseguradoraAprobado,
+                item.MontoDeducible,
+                item.MontoRsa,
+                item.MonedaPagosFinales,
+                item.EstadoDeducible,
+                item.EstadoRsa,
+                item.FechaSolicitudDeducible,
+                item.FechaSolicitudRsa,
+                item.EstadoCotizaciones,
+                item.CotizacionesNota,
+                item.CasoEspecial,
+                item.CasoEspecialNota,
                 EstadoSeguimiento = estadoSeguimiento,
                 item.FechaUltimaRevision,
                 item.UsuarioUltimaRevisionId,
@@ -305,6 +321,23 @@ public class ReclamosApiController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("{id:int}/seguimiento-operativo")]
+    [Authorize(Policy = Permissions.ReclamosEditar)]
+    public async Task<IActionResult> UpdateSeguimientoOperativo(int id, [FromBody] ReclamoSeguimientoOperativoRequest request)
+    {
+        var reclamo = await _reclamos.GetByIdAsync(id);
+        if (reclamo is null)
+            return NotFound();
+
+        await _reclamos.UpdateSeguimientoOperativoAsync(id, request, CurrentUserId());
+        await _auditoria.RegistrarAsync(
+            "ACTUALIZAR_SEGUIMIENTO_OPERATIVO",
+            "RECLAMO",
+            id,
+            $"Deducible={request.EstadoDeducible}; RSA={request.EstadoRsa}; Cotizaciones={request.EstadoCotizaciones}; Especial={request.CasoEspecial}.");
+        return NoContent();
+    }
+
     [HttpGet("siguiente-pendiente")]
     public async Task<IActionResult> GetSiguientePendiente([FromQuery] int? actualId = null)
     {
@@ -428,13 +461,15 @@ public class ReclamosApiController : ControllerBase
         var analysis = InsuranceResponseAnalyzer.Analyze(request.Respuesta);
         var aprobado = request.Aprobado || analysis.Aprobado;
         await _reclamos.RegistrarRespuestaAseguradoraAsync(id, request.Respuesta, aprobado);
+        var appliedAnalysis = analysis with { Aprobado = aprobado };
+        await _reclamos.AplicarAnalisisAseguradoraAsync(id, appliedAnalysis);
         await _reclamos.RegistrarRespuestaAseguradoraHistorialAsync(
             id,
             "MANUAL",
             null,
             null,
             request.Respuesta,
-            analysis with { Aprobado = aprobado },
+            appliedAnalysis,
             null,
             CurrentUserId());
         if (aprobado)
